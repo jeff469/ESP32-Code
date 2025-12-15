@@ -1,0 +1,137 @@
+"""Structured sampling and Excel-friendly export for test runs."""
+import csv
+import os
+import time
+import ujson
+
+from tests.hydronic_slab.event_logger import ensure_log_dir
+from tests.hydronic_slab.sensors.mega import (
+    request_bin_id_states,
+    request_embedded_thermometer_temps_C,
+    request_return_water_temp_C,
+)
+from tests.hydronic_slab.sensors.ultrasonic import measure_all_snow_depths_mm
+from tests.hydronic_slab.state import LOG_DIR
+
+
+class SampleRecorder:
+    """Collects per-interval sensor snapshots and exports them for Excel."""
+
+    def __init__(self, test_id):
+        self.test_id = test_id
+        self.samples = []
+
+    def capture_sample(self, env, elapsed_s, water_temp_C=None):
+        """Capture all requested sensors for the current moment."""
+
+        timestamp = time.time()
+        embedded_temps = request_embedded_thermometer_temps_C()
+        return_temp = request_return_water_temp_C()
+        snow_depths = measure_all_snow_depths_mm()
+        bin_ids = request_bin_id_states()
+
+        sample = {
+            "timestamp": timestamp,
+            "elapsed_s": elapsed_s,
+            "air_temp_C": env.get("air_temp"),
+            "humidity_pct": env.get("humidity"),
+            "wind_speed_mps": env.get("wind_speed"),
+            "wind_dir_deg": env.get("wind_dir"),
+            "water_temp_C": water_temp_C,
+            "embedded_temps_C": embedded_temps,
+            "return_temp_C": return_temp,
+            "snow_depths_mm": snow_depths,
+            "snow_depth_avg_mm": env.get("snow_depth"),
+            "bin_ids": bin_ids,
+        }
+
+        self.samples.append(sample)
+        print(
+            "Recorder captured sample at",
+            round(timestamp, 2),
+            "s: elapsed=", elapsed_s,
+            "water temp=", water_temp_C,
+            "return temp=", return_temp,
+            "snow depths=", snow_depths,
+            "bin ids=", bin_ids,
+        )
+        return sample
+
+    def _get_sample_path(self):
+        ensure_log_dir()
+        return os.path.join(LOG_DIR, f"{self.test_id}_samples.csv")
+
+    def save_excel_friendly_csv(self):
+        """Persist samples to a CSV file Excel can ingest easily."""
+
+        if not self.samples:
+            return None
+
+        path = self._get_sample_path()
+        try:
+            with open(path, "w", newline="") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    [
+                        "timestamp",
+                        "elapsed_s",
+                        "air_temp_C",
+                        "humidity_pct",
+                        "wind_speed_mps",
+                        "wind_dir_deg",
+                        "water_temp_C",
+                        "return_temp_C",
+                        "embedded_temp_A_C",
+                        "embedded_temp_B_C",
+                        "embedded_temp_C_C",
+                        "embedded_temp_D_C",
+                        "embedded_temp_E_C",
+                        "embedded_temp_F_C",
+                        "embedded_temp_G_C",
+                        "embedded_temp_H_C",
+                        "embedded_temp_I_C",
+                        "embedded_temps_C",
+                        "snow_depths_mm",
+                        "snow_depth_avg_mm",
+                        "bin_ids",
+                    ]
+                )
+
+                for sample in self.samples:
+                    embedded = sample.get("embedded_temps_C", [])
+                    embedded_slots = [embedded[i] if i < len(embedded) else None for i in range(9)]
+
+                    writer.writerow(
+                        [
+                            round(sample.get("timestamp", 0.0), 3),
+                            round(sample.get("elapsed_s", 0.0), 1),
+                            sample.get("air_temp_C"),
+                            sample.get("humidity_pct"),
+                            sample.get("wind_speed_mps"),
+                            sample.get("wind_dir_deg"),
+                            sample.get("water_temp_C"),
+                            sample.get("return_temp_C"),
+                            *embedded_slots,
+                            ujson.dumps(sample.get("embedded_temps_C", [])),
+                            ujson.dumps(sample.get("snow_depths_mm", [])),
+                            sample.get("snow_depth_avg_mm"),
+                            ujson.dumps(sample.get("bin_ids", [])),
+                        ]
+                    )
+        except Exception as e:
+            print("Error saving sample CSV:", e)
+            return None
+
+        return path
+
+    def upload_to_cloud(self, filepath):
+        """Placeholder for cloud upload integration."""
+        # Implement cloud upload (e.g., HTTP PUT) when credentials are available.
+        print("Uploading", filepath, "to cloud storage (stub).")
+
+    def finalize(self):
+        """Save samples and upload to the cloud at the end of a trial."""
+        path = self.save_excel_friendly_csv()
+        if path:
+            self.upload_to_cloud(path)
+
