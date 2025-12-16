@@ -281,6 +281,7 @@ def test_sample_recorder_uploads_to_configured_endpoint(monkeypatch, tmp_path):
     log_dir = tmp_path / "logs"
     monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
     monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
     monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
@@ -446,6 +447,7 @@ def test_energy_test_stops_when_embedded_hits_one(monkeypatch, tmp_path):
     log_dir = tmp_path / "logs"
     monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
     monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
     monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
@@ -1074,6 +1076,7 @@ def test_two_hour_simulation_produces_six_tests(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "STATE_FILE", str(tmp_path / "state.json"))
     monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
     monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
     monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
@@ -1200,6 +1203,7 @@ def test_five_hour_simulation_runs_fifteen_cycles(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "STATE_FILE", str(tmp_path / "state.json"))
     monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
     monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
     monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
