@@ -30,7 +30,7 @@ def run_tilted_test(env):
     """
     Run a tilted melt-time test when snow is present.
     """
-    print("\n===== BEGIN TILTED TEST =====")
+    print("\n===== START TILTED TEST =====")
     snow_depth = env["snow_depth"]
     start_snow_depth = snow_depth
     snow_idx = bin_snow_depth(snow_depth)
@@ -69,8 +69,8 @@ def run_tilted_test(env):
     log_event("TILTED_START", env, extra_start)
 
     print(
-        "TILTED TEST START -> TEST #{} ANGLE {} DEG | env_bin {} | repetition #{}".format(
-            test_no, target_ang, env_bin, repetition_count + 1
+        "TILTED TEST #{} ON {} | env_bin {} | angle {} DEG | repetition #{}".format(
+            test_no, day_key, env_bin, target_ang, repetition_count + 1
         )
     )
 
@@ -79,7 +79,7 @@ def run_tilted_test(env):
 
     set_target_angle(target_ang)
     print(
-        "Actuating to target angle:",
+        " Actuator target angle:",
         target_ang,
         "(repetition #{})".format(repetition_count + 1),
     )
@@ -233,7 +233,7 @@ def run_energy_test(env):
     EMBEDDED_CLEAR_TEMP_C = 1.0
     MAX_TEST_DUR = 15 * 60  # 15 minutes
 
-    print("\n===== BEGIN ENERGY TEST =====")
+    print("\n===== START ENERGY TEST =====")
     air_temp = env["air_temp"]
     humidity = env["humidity"]
     wind_speed = env["wind_speed"]
@@ -268,10 +268,11 @@ def run_energy_test(env):
     log_event("ENERGY_START", env, extra_start)
 
     print(
-        "ENERGY TEST START -> TEST #{} ANGLE {} DEG | env_bin {}".format(
-            test_no, NON_TILTED_ANGLE_DEG, combo_key
+        "ENERGY TEST #{} ON {} | env_bin {} | angle {} DEG".format(
+            test_no, day_key, combo_key, NON_TILTED_ANGLE_DEG
         )
     )
+    print(" Actuator target angle:", NON_TILTED_ANGLE_DEG, "(non-tilted mode)")
     print("  env bins:", combo_key, "occurrence #", occur)
     print("  target_temp_C =", target_temp, "  flow_level =", flow_level)
 
