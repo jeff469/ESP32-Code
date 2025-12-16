@@ -143,35 +143,20 @@ def run_tilted_test(env):
             )
             pump_Wh_now, heater_Wh_now = get_energy_totals_Wh()
             print(
-                "Tilted test status @",
-                round(elapsed, 1),
-                "s -> TEST #",
-                test_no,
-                "(repetition #{}), angle =".format(repetition_count + 1),
-                target_ang,
-                "deg, snow depth =",
-                round(current_snow, 2),
-                "mm (melted",
-                round(start_snow_depth - current_snow, 2),
-                "mm), env_bin =",
-                env_bin,
-                "air =",
-                env.get("air_temp"),
-                "°C, humidity =",
-                env.get("humidity"),
-                "%, wind =",
-                env.get("wind_speed"),
-                "m/s @",
-                env.get("wind_dir"),
-                "deg, water temp =",
-                round(water_temp, 2),
-                "°C, pump Wh =",
-                round(pump_Wh_now - pump_Wh_start, 3),
-                "heater Wh =",
-                round(heater_Wh_now - heater_Wh_start, 3),
+                " Sample @ {:>4.0f}s -> TEST #{} | env_bin {} | REP {} | angle {:>2} DEG | snow depth {:>5.2f} mm (melted {:>5.2f} mm) | water {:>5.2f} °C | pump Wh {:>5.3f} | heater Wh {:>5.3f}".format(
+                    elapsed,
+                    test_no,
+                    env_bin,
+                    repetition_count + 1,
+                    target_ang,
+                    current_snow,
+                    start_snow_depth - current_snow,
+                    water_temp,
+                    pump_Wh_now - pump_Wh_start,
+                    heater_Wh_now - heater_Wh_start,
+                )
             )
             last_sample_time = now
-            print("Tilted test -> sample captured at", round(elapsed, 1), "s")
 
         if now - last_log_time >= 30:
             extra_prog = {
@@ -345,18 +330,19 @@ def run_energy_test(env):
             embedded = [t for t in sample.get("embedded_temps_C", []) if t is not None]
             avg_embedded_temp = sum(embedded) / len(embedded) if embedded else None
             last_sample = now
+            pump_Wh_now, heater_Wh_now = get_energy_totals_Wh()
+            avg_display = f"{round(avg_embedded_temp, 3):>5}" if avg_embedded_temp is not None else "  N/A"
+            return_display = f"{last_return_temp:>5}" if last_return_temp is not None else "  N/A"
             print(
-                "Energy test -> TEST #",
-                test_no,
-                "sample captured at",
-                round(elapsed, 1),
-                "s; env_bin =",
-                combo_key,
-                "avg embedded temp =",
-                round(avg_embedded_temp, 3) if avg_embedded_temp is not None else None,
-                "°C; return temp =",
-                last_return_temp,
-                "°C",
+                " Sample @ {:>4.0f}s -> TEST #{} | env_bin {} | avg embedded {} °C | return {} °C | pump Wh {:>5.3f} | heater Wh {:>5.3f}".format(
+                    elapsed,
+                    test_no,
+                    combo_key,
+                    avg_display,
+                    return_display,
+                    pump_Wh_now - pump_Wh_start,
+                    heater_Wh_now - heater_Wh_start,
+                )
             )
 
         if avg_embedded_temp is not None and avg_embedded_temp <= EMBEDDED_CLEAR_TEMP_C:
