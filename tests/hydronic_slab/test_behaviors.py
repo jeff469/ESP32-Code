@@ -38,6 +38,23 @@ class FakeRecorder:
         self.finalized = True
 
 
+class EmbeddedFakeRecorder(FakeRecorder):
+    """Recorder that returns a fixed embedded-temperature set for fast exits."""
+
+    def __init__(self, test_id, embedded_temp=0.5):
+        super().__init__(test_id)
+        self.embedded_temp = embedded_temp
+
+    def capture_sample(self, env, elapsed_s, water_temp_C=None):
+        sample = {
+            "elapsed_s": elapsed_s,
+            "embedded_temps_C": [self.embedded_temp for _ in range(9)],
+            "water_temp_C": water_temp_C,
+        }
+        self.samples.append(sample)
+        return sample
+
+
 def test_is_snow_present_respects_threshold():
     assert not state.is_snow_present(state.SNOW_PRESENT_THRESHOLD - 0.1)
     assert state.is_snow_present(state.SNOW_PRESENT_THRESHOLD)
@@ -133,6 +150,57 @@ def test_energy_occurrence_counts_persist(monkeypatch, tmp_path):
     state.combo_counts.clear()
     state.load_state()
     assert state.combo_counts[key] == 2
+
+
+def test_energy_occurrence_survives_power_cycle(monkeypatch, tmp_path):
+    from tests.hydronic_slab import test_routines, thermostat
+
+    monkeypatch.chdir(tmp_path)
+    state_path = tmp_path / "state.json"
+    monkeypatch.setattr(state, "STATE_FILE", "state.json")
+
+    fake_time = FakeTime()
+    for module in (test_routines, thermostat):
+        monkeypatch.setattr(module, "time", fake_time)
+
+    state.combo_counts.clear()
+    state.init_tilt_coverage()
+    monkeypatch.setattr(state, "_last_energy_update_time", fake_time.time())
+
+    monkeypatch.setattr(test_routines, "ensure_supply_hot", lambda target: None)
+    monkeypatch.setattr(test_routines, "set_flow_level", lambda level: None)
+    monkeypatch.setattr(test_routines, "set_non_tilt_angle", lambda: None)
+    monkeypatch.setattr(test_routines, "set_pump_state", lambda on: None)
+    monkeypatch.setattr(test_routines, "get_energy_totals_Wh", lambda: (0.0, 0.0))
+    monkeypatch.setattr(test_routines, "log_event", lambda *_, **__: None)
+    monkeypatch.setattr(test_routines, "regulate_water_temp", lambda target: target)
+
+    monkeypatch.setattr(test_routines, "SampleRecorder", lambda test_id: EmbeddedFakeRecorder(test_id))
+
+    env = {
+        "air_temp": -5.0,
+        "humidity": 60.0,
+        "wind_speed": 3.0,
+        "wind_dir": 90.0,
+        "snow_depth": 0.0,
+    }
+    combo_key = state.bin_non_tilt_env(
+        env["air_temp"], env["humidity"], env["wind_speed"], env["wind_dir"]
+    )
+
+    first_recorder = test_routines.run_energy_test(dict(env))
+    assert first_recorder.finalized
+    assert os.path.exists(state.STATE_FILE)
+    assert state.combo_counts[combo_key] == 1
+
+    state.combo_counts.clear()
+    state.init_tilt_coverage()
+    state.load_state()
+    assert state.combo_counts[combo_key] == 1
+
+    second_recorder = test_routines.run_energy_test(dict(env))
+    assert second_recorder.finalized
+    assert state.combo_counts[combo_key] == 2
 
 
 def test_power_use_estimator_tracks_pump_and_heater(monkeypatch):
