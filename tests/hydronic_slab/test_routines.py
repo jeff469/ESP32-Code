@@ -11,6 +11,7 @@ from tests.hydronic_slab.state import (
     bin_non_tilt_env,
     bin_snow_depth,
     ensure_supply_hot,
+    get_next_daily_test_number,
     get_adjusted_temp_and_flow_for_combo,
     get_energy_totals_Wh,
     get_next_angle_bin_for_snow_bin,
@@ -40,11 +41,14 @@ def run_tilted_test(env):
         target_ang,
     )
 
-    test_id = "tilted_{}_{}_{}".format(snow_idx, angle_idx, int(time.time()))
+    day_key, test_no = get_next_daily_test_number()
+    test_id = "{}_test{}_tilted_{}_{}".format(day_key, test_no, snow_idx, angle_idx)
 
     extra_start = {
         "test_type": "tilted",
         "test_run_id": test_id,
+        "test_no": test_no,
+        "test_day": day_key,
         "snow_bin_idx": snow_idx,
         "angle_bin_idx": angle_idx,
         "angle_deg": target_ang,
@@ -82,7 +86,17 @@ def run_tilted_test(env):
         env["water_temp_C"] = water_temp
 
         if now - last_sample_time >= 10:
-            recorder.capture_sample(env, elapsed, water_temp)
+            recorder.capture_sample(
+                env,
+                elapsed,
+                water_temp,
+                test_meta={
+                    "test_no": test_no,
+                    "test_day": day_key,
+                    "test_type": "tilted",
+                    "angle_deg": target_ang,
+                },
+            )
             pump_Wh_now, heater_Wh_now = get_energy_totals_Wh()
             print(
                 "Tilted test status @",
@@ -144,6 +158,8 @@ def run_tilted_test(env):
     extra_end = {
         "test_type": "tilted",
         "test_run_id": test_id,
+        "test_no": test_no,
+        "test_day": day_key,
         "snow_bin_idx": snow_idx,
         "angle_bin_idx": angle_idx,
         "angle_deg": target_ang,
@@ -169,16 +185,21 @@ def run_energy_test(env):
     wind_dir = env["wind_dir"]
 
     combo_key = bin_non_tilt_env(air_temp, humidity, wind_speed, wind_dir)
+    day_key, test_no = get_next_daily_test_number()
 
     target_temp, flow_level, occur = get_adjusted_temp_and_flow_for_combo(combo_key)
 
     combo_str = "({}, {}, {}, {})".format(*combo_key)
 
-    test_id = "energy_{}_{}".format(combo_str.replace(" ", ""), int(time.time()))
+    test_id = "{}_test{}_energy_{}".format(
+        day_key, test_no, combo_str.replace(" ", "")
+    )
 
     extra_start = {
         "test_type": "energy",
         "test_run_id": test_id,
+        "test_no": test_no,
+        "test_day": day_key,
         "angle_deg": NON_TILTED_ANGLE_DEG,
         "air_bin": combo_key[0],
         "hum_bin": combo_key[1],
@@ -232,7 +253,17 @@ def run_energy_test(env):
         log_event("ENERGY_PROGRESS", env, extra_prog)
 
         if now - last_sample >= 10:
-            sample = recorder.capture_sample(env, elapsed, water_temp)
+            sample = recorder.capture_sample(
+                env,
+                elapsed,
+                water_temp,
+                test_meta={
+                    "test_no": test_no,
+                    "test_day": day_key,
+                    "test_type": "energy",
+                    "angle_deg": NON_TILTED_ANGLE_DEG,
+                },
+            )
             embedded = [t for t in sample.get("embedded_temps_C", []) if t is not None]
             avg_embedded_temp = sum(embedded) / len(embedded) if embedded else None
             last_sample = now
@@ -279,6 +310,8 @@ def run_energy_test(env):
     extra_end = {
         "test_type": "energy",
         "test_run_id": test_id,
+        "test_no": test_no,
+        "test_day": day_key,
         "duration_s": total_dur,
         "combo_occurrence": occur,
         "target_temp_C": round(target_temp, 2),

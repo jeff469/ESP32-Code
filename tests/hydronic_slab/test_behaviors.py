@@ -1,6 +1,7 @@
 import csv
 import os
 import random
+import time
 import ujson
 
 import pytest
@@ -18,6 +19,11 @@ class FakeTime:
     def sleep(self, seconds):
         self.current += seconds
 
+    def localtime(self, *args, **kwargs):
+        """Mirror ``time.localtime`` using the fake clock."""
+
+        return time.localtime(self.current)
+
 
 class FakeRecorder:
     def __init__(self, test_id):
@@ -25,7 +31,7 @@ class FakeRecorder:
         self.samples = []
         self.finalized = False
 
-    def capture_sample(self, env, elapsed_s, water_temp_C=None):
+    def capture_sample(self, env, elapsed_s, water_temp_C=None, test_meta=None):
         sample = {
             "elapsed_s": elapsed_s,
             "embedded_temps_C": env.get("embedded_temps_C", []),
@@ -45,7 +51,7 @@ class EmbeddedFakeRecorder(FakeRecorder):
         super().__init__(test_id)
         self.embedded_temp = embedded_temp
 
-    def capture_sample(self, env, elapsed_s, water_temp_C=None):
+    def capture_sample(self, env, elapsed_s, water_temp_C=None, test_meta=None):
         sample = {
             "elapsed_s": elapsed_s,
             "embedded_temps_C": [self.embedded_temp for _ in range(9)],

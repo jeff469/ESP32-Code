@@ -31,6 +31,7 @@ BASE_WATER_TEMP_C = 30.0
 BASE_FLOW_LEVEL = 0.7
 
 combo_counts = {}
+daily_test_counts = {}
 
 PUMP_PWM_PIN = 25
 pump_pwm = machine.PWM(Pin(PUMP_PWM_PIN), freq=1000)
@@ -150,9 +151,10 @@ def init_tilt_coverage():
 
 
 def load_state():
-    global tilt_coverage, combo_counts
+    global tilt_coverage, combo_counts, daily_test_counts
     init_tilt_coverage()
     combo_counts = {}
+    daily_test_counts = {}
     try:
         if STATE_FILE not in os.listdir():
             print("No state file found; starting with fresh coverage.")
@@ -185,13 +187,26 @@ def load_state():
         except Exception as e:
             print("Error parsing combo_counts:", e)
 
+    daily_data = data.get("daily_test_counts")
+    if daily_data:
+        try:
+            for day_key, cnt in daily_data.items():
+                daily_test_counts[day_key] = int(cnt)
+            print("Loaded daily_test_counts with", len(daily_test_counts), "days tracked.")
+        except Exception as e:
+            print("Error parsing daily_test_counts:", e)
+
 
 def save_state():
     combo_data = {}
     for key, cnt in combo_counts.items():
         key_str = "{},{},{},{}".format(*key)
         combo_data[key_str] = cnt
-    data = {"tilt_coverage": tilt_coverage, "combo_counts": combo_data}
+    data = {
+        "tilt_coverage": tilt_coverage,
+        "combo_counts": combo_data,
+        "daily_test_counts": daily_test_counts,
+    }
     try:
         with open(STATE_FILE, "w") as f:
             ujson.dump(data, f)
@@ -291,3 +306,17 @@ def get_adjusted_temp_and_flow_for_combo(combo_key):
     if flow_level > 1.0:
         flow_level = 1.0
     return target_temp, flow_level, count
+
+
+def _current_day_key():
+    today = time.localtime()
+    return f"{today.tm_year:04d}-{today.tm_mon:02d}-{today.tm_mday:02d}"
+
+
+def get_next_daily_test_number():
+    """Return (day_str, count) for the next test of the current day."""
+
+    day_key = _current_day_key()
+    count = daily_test_counts.get(day_key, 0) + 1
+    daily_test_counts[day_key] = count
+    return day_key, count

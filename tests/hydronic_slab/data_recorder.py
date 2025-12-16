@@ -21,7 +21,7 @@ class SampleRecorder:
         self.test_id = test_id
         self.samples = []
 
-    def capture_sample(self, env, elapsed_s, water_temp_C=None):
+    def capture_sample(self, env, elapsed_s, water_temp_C=None, test_meta=None):
         """Capture all requested sensors for the current moment."""
 
         timestamp = time.time()
@@ -46,14 +46,39 @@ class SampleRecorder:
         }
 
         self.samples.append(sample)
+
+        meta_parts = []
+        if test_meta:
+            if test_meta.get("test_no") is not None:
+                meta_parts.append(f"Test #{test_meta['test_no']}")
+            if test_meta.get("test_day"):
+                meta_parts.append(test_meta["test_day"])
+            if test_meta.get("test_type"):
+                meta_parts.append(test_meta["test_type"].upper())
+            if test_meta.get("angle_deg") is not None:
+                meta_parts.append(f"angle={test_meta['angle_deg']}°")
+
+        meta_str = " | ".join(meta_parts) if meta_parts else "Sample"
+
         print(
-            "Recorder captured sample at",
-            round(timestamp, 2),
-            "s: elapsed=", elapsed_s,
-            "water temp=", water_temp_C,
-            "return temp=", return_temp,
-            "snow depths=", snow_depths,
-            "bin ids=", bin_ids,
+            f"{meta_str} -> Excel row data:",
+            f"timestamp={round(timestamp, 3)}",
+            f"elapsed_s={round(elapsed_s, 1)}",
+            f"air_temp_C={env.get('air_temp')}",
+            f"humidity_pct={env.get('humidity')}",
+            f"wind_speed_mps={env.get('wind_speed')}",
+            f"wind_dir_deg={env.get('wind_dir')}",
+            f"water_temp_C={water_temp_C}",
+            f"return_temp_C={return_temp}",
+            f"snow_depths_mm={snow_depths}",
+            f"snow_depth_avg_mm={env.get('snow_depth')}",
+            f"bin_ids={bin_ids}",
+        )
+        print(
+            "    embedded A-I (°C) =",
+            embedded_temps,
+            "| raw embedded list =",
+            ujson.dumps(embedded_temps),
         )
         return sample
 
