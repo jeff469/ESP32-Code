@@ -743,6 +743,16 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
         state.SNOW_PRESENT_THRESHOLD + 2,
         state.SNOW_PRESENT_THRESHOLD + 2,
     ]
+    snow_depths = iter(
+        [
+            0.0,
+            0.0,
+            0.0,
+            state.SNOW_PRESENT_THRESHOLD + 1,
+            state.SNOW_PRESENT_THRESHOLD + 2,
+            state.SNOW_PRESENT_THRESHOLD + 2,
+        ]
+    )
 
     bin_a_env = {"air": -20.0, "hum": 50.0, "wind": 5.0, "dir": 90.0}
     bin_b_env = {"air": -8.0, "hum": 20.0, "wind": 12.0, "dir": 270.0}
@@ -768,6 +778,26 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
         depth = snow_depth_plan[min(cycle_index, len(snow_depth_plan) - 1)]
         cycle_index += 1
         return depth
+    env_sequence = iter(
+        [
+            bin_a_env.copy(),
+            bin_a_env.copy(),
+            bin_a_env.copy(),
+            bin_a_env.copy(),
+            bin_b_env.copy(),
+            bin_b_env.copy(),
+        ]
+    )
+
+    current_env = {"air": 0.0, "hum": 0.0, "wind": 0.0, "dir": 0.0}
+
+    def advance_cycle():
+        try:
+            env_vals = next(env_sequence)
+        except StopIteration:
+            env_vals = bin_b_env
+        current_env.update(env_vals)
+        return next(snow_depths)
 
     monkeypatch.setattr(main, "load_state", lambda: None)
     monkeypatch.setattr(main, "init_log_file", lambda: None)
@@ -893,6 +923,9 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
     print(f"TOTAL TESTS EXECUTED: {total_runs} (expected {expected_runs})")
 
     assert total_runs == expected_runs
+    print(f"TOTAL TESTS EXECUTED: {total_runs}")
+
+    assert total_runs == 6
 
     first_env_bin = run_log[0][1]
     assert all(run[0] == "energy" and run[1] == first_env_bin for run in run_log[:3])
@@ -1094,6 +1127,9 @@ def test_two_hour_simulation_produces_six_tests(monkeypatch, tmp_path):
             "wind_dir_deg": 95.0,
         },
     )
+    monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
+    monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+    monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
 
     rng = random.Random(4242)
 

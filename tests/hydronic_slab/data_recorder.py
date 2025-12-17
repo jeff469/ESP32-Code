@@ -33,6 +33,9 @@ class SampleRecorder:
         self.weather_snapshot = None
         self.upload_url = upload_url or os.environ.get("HYDRONIC_UPLOAD_URL")
         self.upload_client = upload_client
+    def __init__(self, test_id):
+        self.test_id = test_id
+        self.samples = []
 
     def capture_sample(self, env, elapsed_s, water_temp_C=None, test_meta=None):
         """Capture all requested sensors for the current moment."""
@@ -275,4 +278,14 @@ class SampleRecorder:
         for target in (path, weather_path):
             if target:
                 self.upload_to_cloud(target)
+    def upload_to_cloud(self, filepath):
+        """Placeholder for cloud upload integration."""
+        # Implement cloud upload (e.g., HTTP PUT) when credentials are available.
+        print("Uploading", filepath, "to cloud storage (stub).")
+
+    def finalize(self):
+        """Save samples and upload to the cloud at the end of a trial."""
+        path = self.save_excel_friendly_csv()
+        if path:
+            self.upload_to_cloud(path)
 
