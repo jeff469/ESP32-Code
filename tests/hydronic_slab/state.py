@@ -32,6 +32,7 @@ BASE_FLOW_LEVEL = 0.7
 
 combo_counts = {}
 daily_test_counts = {}
+last_angle_deg = None
 
 PUMP_PWM_PIN = 25
 pump_pwm = machine.PWM(Pin(PUMP_PWM_PIN), freq=1000)
@@ -85,9 +86,11 @@ def set_pump_state(on):
     if on:
         pump_on()
         pump_is_on = True
+        print("PUMP STATE -> ON")
     else:
         pump_off()
         pump_is_on = False
+        print("PUMP STATE -> OFF")
 
 
 def set_heater_state(on):
@@ -151,10 +154,11 @@ def init_tilt_coverage():
 
 
 def load_state():
-    global tilt_coverage, combo_counts, daily_test_counts
+    global tilt_coverage, combo_counts, daily_test_counts, last_angle_deg
     init_tilt_coverage()
     combo_counts = {}
     daily_test_counts = {}
+    last_angle_deg = None
     try:
         if STATE_FILE not in os.listdir():
             print("No state file found; starting with fresh coverage.")
@@ -196,6 +200,13 @@ def load_state():
         except Exception as e:
             print("Error parsing daily_test_counts:", e)
 
+    if "last_angle_deg" in data:
+        try:
+            last_angle_deg = float(data.get("last_angle_deg"))
+            print("Loaded last known angle:", last_angle_deg)
+        except Exception as e:
+            print("Error parsing last_angle_deg:", e)
+
 
 def save_state():
     combo_data = {}
@@ -206,6 +217,7 @@ def save_state():
         "tilt_coverage": tilt_coverage,
         "combo_counts": combo_data,
         "daily_test_counts": daily_test_counts,
+        "last_angle_deg": last_angle_deg,
     }
     try:
         with open(STATE_FILE, "w") as f:
@@ -238,6 +250,13 @@ def get_next_angle_bin_for_snow_bin(snow_bin_idx):
         if not tested:
             return angle_idx
     return 0
+
+
+def get_repetition_count_for_snow_bin(snow_bin_idx):
+    """Return how many times the given snow bin has been tested."""
+
+    row = tilt_coverage[snow_bin_idx]
+    return sum(1 for tested in row if tested)
 
 
 def mark_angle_tested(snow_idx, angle_idx):
@@ -306,6 +325,24 @@ def get_adjusted_temp_and_flow_for_combo(combo_key):
     if flow_level > 1.0:
         flow_level = 1.0
     return target_temp, flow_level, count
+
+
+def update_last_angle(angle_deg):
+    """Store the most recent measured or commanded slab angle."""
+
+    global last_angle_deg
+    if angle_deg is None:
+        return
+    last_angle_deg = float(angle_deg)
+    print("Recorded last angle =", last_angle_deg)
+
+
+def get_last_known_angle(default=NON_TILTED_ANGLE_DEG):
+    """Return the last recorded angle, or a sane default if unknown."""
+
+    if last_angle_deg is not None:
+        return last_angle_deg
+    return default
 
 
 def _current_day_key():

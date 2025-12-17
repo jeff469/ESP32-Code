@@ -15,6 +15,7 @@ from tests.hydronic_slab.state import (
     get_adjusted_temp_and_flow_for_combo,
     get_energy_totals_Wh,
     get_next_angle_bin_for_snow_bin,
+    get_repetition_count_for_snow_bin,
     mark_angle_tested,
     save_state,
     set_flow_level,
@@ -22,14 +23,22 @@ from tests.hydronic_slab.state import (
 )
 from tests.hydronic_slab.thermostat import regulate_water_temp
 
+SIMULATED_MELT_MM_PER_CYCLE = 5.0
+
 
 def run_tilted_test(env):
     """
     Run a tilted melt-time test when snow is present.
     """
+    print("\n===== BEGIN TILTED TEST =====")
     snow_depth = env["snow_depth"]
+    start_snow_depth = snow_depth
     snow_idx = bin_snow_depth(snow_depth)
+    env_bin = bin_non_tilt_env(
+        env.get("air_temp"), env.get("humidity"), env.get("wind_speed"), env.get("wind_dir")
+    )
     angle_idx = get_next_angle_bin_for_snow_bin(snow_idx)
+    repetition_count = get_repetition_count_for_snow_bin(snow_idx)
     target_ang = ANGLE_BINS[angle_idx]
 
     print(
@@ -39,6 +48,8 @@ def run_tilted_test(env):
         angle_idx,
         "target angle (deg) =",
         target_ang,
+        "repetition #",
+        repetition_count + 1,
     )
 
     day_key, test_no = get_next_daily_test_number()
@@ -53,17 +64,30 @@ def run_tilted_test(env):
         "angle_bin_idx": angle_idx,
         "angle_deg": target_ang,
     }
+    env["env_bin"] = env_bin
+
     log_event("TILTED_START", env, extra_start)
+
+    print(
+        "TILTED TEST START -> TEST #{} ANGLE {} DEG | env_bin {} | repetition #{}".format(
+            test_no, target_ang, env_bin, repetition_count + 1
+        )
+    )
 
     TARGET_WATER_TEMP = 35.0
     ensure_supply_hot(TARGET_WATER_TEMP)
 
     set_target_angle(target_ang)
-    print("Actuating to target angle:", target_ang)
+    print(
+        "Actuating to target angle:",
+        target_ang,
+        "(repetition #{})".format(repetition_count + 1),
+    )
 
     pump_Wh_start, heater_Wh_start = get_energy_totals_Wh()
 
     set_pump_state(True)
+    print("Tilted test -> pump on")
 
     start_time = time.time()
     last_log_time = start_time
@@ -72,11 +96,30 @@ def run_tilted_test(env):
 
     recorder = SampleRecorder(test_id)
 
+    modeled_snow_depth = None
+    time_to_clear_s = None
+    end_reason = None
+
     while True:
         now = time.time()
         elapsed = now - start_time
 
-        current_snow = measure_snow_depth_mm()
+        measured_snow = measure_snow_depth_mm()
+        if modeled_snow_depth is None:
+            current_snow = measured_snow
+        else:
+            if measured_snow >= modeled_snow_depth - 0.01:
+                current_snow = max(modeled_snow_depth - SIMULATED_MELT_MM_PER_CYCLE, 0.0)
+                print(
+                    "Tilted test -> modeling melt: measured",
+                    round(measured_snow, 2),
+                    "mm -> adjusted",
+                    round(current_snow, 2),
+                    "mm",
+                )
+            else:
+                current_snow = measured_snow
+        modeled_snow_depth = current_snow
         water_temp = regulate_water_temp(TARGET_WATER_TEMP)
 
         env["snow_depth"] = current_snow
@@ -84,6 +127,7 @@ def run_tilted_test(env):
         env["angle_bin_idx"] = angle_idx
         env["angle_deg"] = target_ang
         env["water_temp_C"] = water_temp
+        env["env_bin"] = env_bin
 
         if now - last_sample_time >= 10:
             recorder.capture_sample(
@@ -101,9 +145,17 @@ def run_tilted_test(env):
             print(
                 "Tilted test status @",
                 round(elapsed, 1),
-                "s -> snow depth =",
+                "s -> TEST #",
+                test_no,
+                "(repetition #{}), angle =".format(repetition_count + 1),
+                target_ang,
+                "deg, snow depth =",
                 round(current_snow, 2),
-                "mm, air =",
+                "mm (melted",
+                round(start_snow_depth - current_snow, 2),
+                "mm), env_bin =",
+                env_bin,
+                "air =",
                 env.get("air_temp"),
                 "°C, humidity =",
                 env.get("humidity"),
@@ -132,14 +184,15 @@ def run_tilted_test(env):
             print("Tilted test -> progress log at", round(elapsed, 1), "s")
 
         if current_snow <= SNOW_CLEAR_THRESHOLD:
-            print(
-                "Snow melted (depth <= {} mm). Ending test.".format(
-                    SNOW_CLEAR_THRESHOLD
-                )
+            end_reason = "snow depth {} mm <= clear threshold {} mm".format(
+                round(current_snow, 2), SNOW_CLEAR_THRESHOLD
             )
+            print("Snow melted (depth <= {} mm). Ending test.".format(SNOW_CLEAR_THRESHOLD))
+            time_to_clear_s = elapsed
             break
 
         if elapsed > MAX_TEST_DURATION_S:
+            end_reason = "max duration {} s reached".format(MAX_TEST_DURATION_S)
             print("Tilted test max duration reached. Ending test.")
             break
 
@@ -165,10 +218,25 @@ def run_tilted_test(env):
         "angle_deg": target_ang,
         "duration_s": total_dur,
         "snow_depth": current_snow,
+        "time_to_clear_s": time_to_clear_s,
+        "depth_melted_mm": max(start_snow_depth - current_snow, 0.0),
         "pump_Wh": pump_Wh_used,
         "heater_Wh": heater_Wh_used,
+        "end_reason": end_reason,
     }
     log_event("TILTED_END", env, extra_end)
+
+    end_msg = "TILTED TEST END -> TEST #{} ANGLE {} DEG".format(test_no, target_ang)
+    if time_to_clear_s is not None:
+        end_msg += " | melt_time_s = {:.1f}".format(time_to_clear_s)
+        end_msg += " | depth_melted_mm = {:.2f}".format(
+            max(start_snow_depth - current_snow, 0.0)
+        )
+    end_msg += " | duration_s = {:.1f}".format(total_dur)
+    if end_reason:
+        end_msg += " | end_reason = {}".format(end_reason)
+    print(end_msg)
+    print("===== END TILTED TEST =====\n")
 
     recorder.finalize()
 
@@ -178,13 +246,16 @@ def run_tilted_test(env):
 def run_energy_test(env):
     """Run a non-tilted energy delivery test when there is no snow."""
     EMBEDDED_CLEAR_TEMP_C = 1.0
+    MAX_TEST_DUR = 15 * 60  # 15 minutes
 
+    print("\n===== BEGIN ENERGY TEST =====")
     air_temp = env["air_temp"]
     humidity = env["humidity"]
     wind_speed = env["wind_speed"]
     wind_dir = env["wind_dir"]
 
     combo_key = bin_non_tilt_env(air_temp, humidity, wind_speed, wind_dir)
+    env["env_bin"] = combo_key
     day_key, test_no = get_next_daily_test_number()
 
     target_temp, flow_level, occur = get_adjusted_temp_and_flow_for_combo(combo_key)
@@ -211,7 +282,11 @@ def run_energy_test(env):
     }
     log_event("ENERGY_START", env, extra_start)
 
-    print("ENERGY TEST")
+    print(
+        "ENERGY TEST START -> TEST #{} ANGLE {} DEG | env_bin {}".format(
+            test_no, NON_TILTED_ANGLE_DEG, combo_key
+        )
+    )
     print("  env bins:", combo_key, "occurrence #", occur)
     print("  target_temp_C =", target_temp, "  flow_level =", flow_level)
 
@@ -226,13 +301,15 @@ def run_energy_test(env):
     set_pump_state(True)
     print("Energy test -> pump on")
 
-    MAX_TEST_DUR = 2 * 60 * 60
     start = time.time()
 
     recorder = SampleRecorder(test_id)
     last_sample = start
     last_log = start
     avg_embedded_temp = None
+    time_to_clear_s = None
+    last_return_temp = None
+    end_reason = None
 
     while True:
         now = time.time()
@@ -264,18 +341,29 @@ def run_energy_test(env):
                     "angle_deg": NON_TILTED_ANGLE_DEG,
                 },
             )
+            last_return_temp = sample.get("return_temp_C")
             embedded = [t for t in sample.get("embedded_temps_C", []) if t is not None]
             avg_embedded_temp = sum(embedded) / len(embedded) if embedded else None
             last_sample = now
             print(
-                "Energy test -> sample captured at",
+                "Energy test -> TEST #",
+                test_no,
+                "sample captured at",
                 round(elapsed, 1),
-                "s; avg embedded temp =",
+                "s; env_bin =",
+                combo_key,
+                "avg embedded temp =",
                 round(avg_embedded_temp, 3) if avg_embedded_temp is not None else None,
+                "°C; return temp =",
+                last_return_temp,
                 "°C",
             )
 
         if avg_embedded_temp is not None and avg_embedded_temp <= EMBEDDED_CLEAR_TEMP_C:
+            time_to_clear_s = elapsed
+            end_reason = "avg embedded temp {}°C <= {}°C threshold".format(
+                round(avg_embedded_temp, 3), EMBEDDED_CLEAR_TEMP_C
+            )
             print(
                 "Embedded avg temp <=",
                 EMBEDDED_CLEAR_TEMP_C,
@@ -295,6 +383,12 @@ def run_energy_test(env):
             last_log = now
 
         if elapsed >= MAX_TEST_DUR:
+            end_reason = "max duration {} s reached".format(MAX_TEST_DUR)
+            print(
+                "Energy test hit max duration of",
+                MAX_TEST_DUR,
+                "seconds; ending run.",
+            )
             break
 
         time.sleep(10)
@@ -313,13 +407,27 @@ def run_energy_test(env):
         "test_no": test_no,
         "test_day": day_key,
         "duration_s": total_dur,
+        "time_to_clear_s": time_to_clear_s,
         "combo_occurrence": occur,
         "target_temp_C": round(target_temp, 2),
         "target_flow_level": round(flow_level, 3),
         "pump_Wh": pump_Wh_used,
         "heater_Wh": heater_Wh_used,
+        "end_reason": end_reason,
     }
     log_event("ENERGY_END", env, extra_end)
+
+    end_msg = "ENERGY TEST END -> TEST #{} ANGLE {} DEG".format(
+        test_no, NON_TILTED_ANGLE_DEG
+    )
+    if time_to_clear_s is not None:
+        end_msg += " | time_to_clear_s = {:.1f}".format(time_to_clear_s)
+    end_msg += " | duration_s = {:.1f}".format(total_dur)
+    end_msg += " | return_temp_C = {}".format(last_return_temp)
+    if end_reason:
+        end_msg += " | end_reason = {}".format(end_reason)
+    print(end_msg)
+    print("===== END ENERGY TEST =====\n")
 
     save_state()
 

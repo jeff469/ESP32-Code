@@ -11,7 +11,13 @@ from tests.hydronic_slab.sensors.environment import (
 )
 from tests.hydronic_slab.sensors.mega import request_slab_angle_deg
 from tests.hydronic_slab.sensors.ultrasonic import measure_snow_depth_mm
-from tests.hydronic_slab.state import is_snow_present, load_state
+from tests.hydronic_slab.state import (
+    bin_non_tilt_env,
+    get_last_known_angle,
+    is_snow_present,
+    load_state,
+    update_last_angle,
+)
 from tests.hydronic_slab.test_routines import run_energy_test, run_tilted_test
 
 
@@ -22,8 +28,14 @@ def main(cycle_period_s=20 * 60, max_cycles=None):
     initial_angle = request_slab_angle_deg()
     if initial_angle is not None:
         print("Initial slab angle from sensor:", initial_angle)
+        update_last_angle(initial_angle)
     else:
-        print("Could not read initial slab angle; leaving actuators stopped.")
+        fallback_angle = get_last_known_angle()
+        update_last_angle(fallback_angle)
+        print(
+            "Initial slab angle unavailable; using last recorded/default angle:",
+            fallback_angle,
+        )
         actuators_stop()
 
     cycle_count = 0
@@ -44,9 +56,12 @@ def main(cycle_period_s=20 * 60, max_cycles=None):
             "wind_dir": wind_dir,
         }
 
+        env_bin = bin_non_tilt_env(air_temp, humidity, wind_speed, wind_dir)
+        env["env_bin"] = env_bin
+
         print(
-            "New cycle: snow_depth = {:.1f} mm, air_temp = {:.1f} °C".format(
-                snow_depth, air_temp
+            "New cycle: snow_depth = {:.1f} mm, air_temp = {:.1f} °C, env_bin = {}".format(
+                snow_depth, air_temp, env_bin
             )
         )
 

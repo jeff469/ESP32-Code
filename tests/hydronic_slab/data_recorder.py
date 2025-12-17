@@ -6,7 +6,6 @@ import ujson
 
 from tests.hydronic_slab.event_logger import ensure_log_dir
 from tests.hydronic_slab.sensors.mega import (
-    request_bin_id_states,
     request_embedded_thermometer_temps_C,
     request_return_water_temp_C,
 )
@@ -28,7 +27,9 @@ class SampleRecorder:
         embedded_temps = request_embedded_thermometer_temps_C()
         return_temp = request_return_water_temp_C()
         snow_depths = measure_all_snow_depths_mm()
-        bin_ids = request_bin_id_states()
+        snow_depth_avg = (
+            sum(snow_depths) / len(snow_depths) if snow_depths else env.get("snow_depth")
+        )
 
         sample = {
             "timestamp": timestamp,
@@ -41,8 +42,7 @@ class SampleRecorder:
             "embedded_temps_C": embedded_temps,
             "return_temp_C": return_temp,
             "snow_depths_mm": snow_depths,
-            "snow_depth_avg_mm": env.get("snow_depth"),
-            "bin_ids": bin_ids,
+            "snow_depth_avg_mm": snow_depth_avg,
         }
 
         self.samples.append(sample)
@@ -71,8 +71,7 @@ class SampleRecorder:
             f"water_temp_C={water_temp_C}",
             f"return_temp_C={return_temp}",
             f"snow_depths_mm={snow_depths}",
-            f"snow_depth_avg_mm={env.get('snow_depth')}",
-            f"bin_ids={bin_ids}",
+            f"snow_depth_avg_mm={snow_depth_avg}",
         )
         print(
             "    embedded A-I (°C) =",
@@ -118,7 +117,6 @@ class SampleRecorder:
                         "embedded_temps_C",
                         "snow_depths_mm",
                         "snow_depth_avg_mm",
-                        "bin_ids",
                     ]
                 )
 
@@ -140,7 +138,6 @@ class SampleRecorder:
                             ujson.dumps(sample.get("embedded_temps_C", [])),
                             ujson.dumps(sample.get("snow_depths_mm", [])),
                             sample.get("snow_depth_avg_mm"),
-                            ujson.dumps(sample.get("bin_ids", [])),
                         ]
                     )
         except Exception as e:
