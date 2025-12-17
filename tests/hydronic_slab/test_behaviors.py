@@ -890,9 +890,10 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
     main.main(cycle_period_s=0, max_cycles=6)
 
     total_runs = len(run_log)
-    print(f"TOTAL TESTS EXECUTED: {total_runs}")
+    expected_runs = 6
+    print(f"TOTAL TESTS EXECUTED: {total_runs} (expected {expected_runs})")
 
-    assert total_runs == 6
+    assert total_runs == expected_runs
 
     first_env_bin = run_log[0][1]
     assert all(run[0] == "energy" and run[1] == first_env_bin for run in run_log[:3])
