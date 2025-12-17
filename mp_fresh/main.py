@@ -21,17 +21,22 @@ def avg(values):
     return sum(values) / len(values)
 
 
-def bin_value(value, width):
-    return int(value // width)
+def bin_value(value, width, max_value):
+    bin_idx = int(value // width)
+    if bin_idx > max_value:
+        bin_idx = max_value
+    if bin_idx < 0:
+        bin_idx = 0
+    return bin_idx
 
 
 def build_bin_id(ambient, wind):
     temp, hum = ambient
     speed, direction = wind
-    tbin = bin_value(temp, config.BIN_WIDTH_TEMP)
-    hbin = bin_value(hum, config.BIN_WIDTH_HUM)
-    sbin = bin_value(speed, config.BIN_WIDTH_WIND_SPEED)
-    dbin = bin_value(direction, 360 // config.BIN_WIDTH_WIND_DIR)
+    tbin = bin_value(temp, config.BIN_WIDTH_TEMP, config.BIN_MAX_TEMP)
+    hbin = bin_value(hum, config.BIN_WIDTH_HUM, config.BIN_MAX_HUM)
+    sbin = bin_value(speed, config.BIN_WIDTH_WIND_SPEED, config.BIN_MAX_WIND_SPEED)
+    dbin = bin_value(direction, 360 // config.BIN_WIDTH_WIND_DIR, config.BIN_MAX_WIND_DIR)
     return "%d,%d,%d,%d" % (tbin, hbin, sbin, dbin)
 
 
@@ -64,10 +69,19 @@ def heat_to_target(mg, thermo, target):
         t_now = thermo.read_temp_c()
         if t_now >= target:
             break
+        if time.time() - start >= config.HEAT_TIMEOUT_SECONDS:
+            print(
+                "heater timeout at",
+                int(config.HEAT_TIMEOUT_SECONDS),
+                "s; current temp",
+                t_now,
+                "continuing",
+            )
+            break
         time.sleep(1)
     mg.heater_off()
     elapsed = time.time() - start
-    print("target temp reached in", int(elapsed), "seconds")
+    print("target temp reached or timeout in", int(elapsed), "seconds")
 
 
 def run_tilted(suite, mg, st, bin_id, bin_index):

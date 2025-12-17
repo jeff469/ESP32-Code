@@ -47,10 +47,19 @@ TRIAL_REST_SECONDS = 20 * 60
 TRIAL_MAX_SECONDS = 15 * 60
 LOG_INTERVAL_SECONDS = 10
 
+# Heating safety/timeout
+HEAT_TIMEOUT_SECONDS = 120
+
 BIN_WIDTH_TEMP = 4
 BIN_WIDTH_HUM = 3
 BIN_WIDTH_WIND_SPEED = 3
 BIN_WIDTH_WIND_DIR = 3
+# Bin indices are capped to these maxima (0-based). With width settings
+# above, this yields four bins for temp/humidity/wind speed (0-3).
+BIN_MAX_TEMP = 3
+BIN_MAX_HUM = 3
+BIN_MAX_WIND_SPEED = 3
+BIN_MAX_WIND_DIR = 2
 
 STATE_PATH = "state/bin_counts.json"
 LOG_DIR = "logs"
