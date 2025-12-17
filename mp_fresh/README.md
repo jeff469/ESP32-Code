@@ -12,7 +12,7 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 
 ## Operation
 1. Snow depth = `PRESET_CLEAR_DISTANCE_CM - avg(4 ultrasonics)`. If ≥ 5 cm → tilted test else non-tilted.
-2. Bin ID `(tbin,hbin,sbin,dbin)` from ambient temp/humidity, wind speed/direction with widths (4 °C, 3 %, 3 m/s, 3 dir sectors).
+2. Bin ID `(tbin,hbin,sbin,dbin)` from ambient temp/humidity, wind speed/direction with widths (4 °C, 3 %, 3 m/s, 3 dir sectors), clamped to max indices temp/humidity/speed=4 and direction=2.
 3. Bin counts persist in `state/bin_counts.json`.
 
 ### Tilted test
@@ -34,7 +34,10 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 - `config.py` constants and pin map.
 - `sensors.py` real/stub sensor helpers.
 - `mega.py` UART command helpers with local prints.
-- `state.py` persistent bin counts and trial counter.
+- `glacial_state.py` persistent bin counts and trial counter.
 - `logger.py` CSV logger utilities.
 - `main.py` orchestrates snow decision tree and trial loops.
 - `state/bin_counts.json` created automatically on first run.
+
+Heating guard: `HEAT_TIMEOUT_SECONDS` (in `config.py`) stops the heater wait if the target temperature is never reached
+to keep raw REPL access usable during hardware testing.
