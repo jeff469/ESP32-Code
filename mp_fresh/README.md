@@ -26,8 +26,9 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 - Heat to target, angle 0°, pump ON.
 - Stop when avg pavement ≥0.7 °C or 15 min. Then slope 5°, pump/heater OFF, rest 20 min.
 
-## Smoke test
-Set `SMOKE_TEST=True` in `config.py` to read each real sensor once and send Mega commands `H→h`, `P→p`, `U→S→D→S`. All actions print to serial.
+## Testing modes
+- Set `SMOKE_TEST=True` in `config.py` to read each real sensor once and send Mega commands `H→h`, `P→p`, `U→S→D→S`. All actions print to serial.
+- Set `DIAGNOSTIC_TEST=True` to gather multiple sensor samples (count/delay configured in `DIAG_SAMPLE_COUNT`/`DIAG_SAMPLE_DELAY_S`), print the active bin ID per sample, and run the smoke test sequence.
 
 ## Files
 - `config.py` constants and pin map.

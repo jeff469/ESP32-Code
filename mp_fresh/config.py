@@ -2,7 +2,10 @@
 # Avoid forbidden imports; keep constants simple.
 
 SMOKE_TEST = False
+DIAGNOSTIC_TEST = False
 RUN_ONCE = True
+DIAG_SAMPLE_COUNT = 3
+DIAG_SAMPLE_DELAY_S = 1
 
 # Pin assignments
 ULTRASONIC_PINS = {

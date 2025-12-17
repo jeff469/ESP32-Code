@@ -185,11 +185,52 @@ def smoke_test(suite, mg):
     print("Smoke test complete")
 
 
+def diagnostic_test(suite, mg, st):
+    print("Running DIAGNOSTIC_TEST")
+    print("glacial_state file:", getattr(state, "__file__", None))
+    print("State keys:", st)
+    for i in range(config.DIAG_SAMPLE_COUNT):
+        distances = suite.read_ultrasonics()
+        snow = snow_depth_cm(distances)
+        amb = suite.ambient_real.read()
+        wind = suite.read_wind()
+        bin_id = build_bin_id(amb, wind)
+        flows = suite.read_flows()
+        temps = suite.read_temps()
+        pav = suite.read_pavement()
+        pav_avg = avg(pav)
+        print(
+            "Sample",
+            i + 1,
+            "bin",
+            bin_id,
+            "snow",
+            snow,
+            "ambient",
+            amb,
+            "wind",
+            wind,
+            "flows",
+            flows,
+            "fluid_temps",
+            temps,
+            "pav_avg",
+            pav_avg,
+        )
+        time.sleep(config.DIAG_SAMPLE_DELAY_S)
+    smoke_test(suite, mg)
+    print("DIAGNOSTIC_TEST complete")
+
+
 def main_loop():
     logger.ensure_dirs()
     st = state.load_state()
     suite = sensors.SensorSuite()
     mg = MegaController()
+
+    if config.DIAGNOSTIC_TEST:
+        diagnostic_test(suite, mg, st)
+        return
 
     if config.SMOKE_TEST:
         smoke_test(suite, mg)
