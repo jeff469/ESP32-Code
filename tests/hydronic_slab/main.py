@@ -42,8 +42,6 @@ def main(cycle_period_s=20 * 60, max_cycles=None):
     while True:
         cycle_start = time.time()
 
-        print("\n=== HYDRONIC CYCLE {} ===".format(cycle_count + 1))
-
         snow_depth = measure_snow_depth_mm()
         air_temp = read_air_temperature_C()
         humidity = read_relative_humidity()
@@ -84,8 +82,6 @@ def main(cycle_period_s=20 * 60, max_cycles=None):
             print("Cycle overran period; starting next cycle now.")
 
         cycle_count += 1
-        print("--- END OF CYCLE {} ---".format(cycle_count))
-
         if max_cycles is not None and cycle_count >= max_cycles:
             print("Reached max_cycles =", max_cycles, "-> exiting main loop.")
             break

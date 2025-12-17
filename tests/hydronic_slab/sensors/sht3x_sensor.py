@@ -1,6 +1,9 @@
 """SHT3x single-shot reader using the validated ESP32 wiring."""
 
+from __future__ import annotations
+
 import struct
+from typing import Optional, Tuple
 
 try:  # MicroPython
     from machine import I2C, Pin
@@ -30,7 +33,7 @@ class SHT3xSensor:
             self._i2c = None
 
     @staticmethod
-    def _crc_ok(data, crc):
+    def _crc_ok(data: bytes, crc: int) -> bool:
         poly = 0x31
         crc_calc = 0xFF
         for byte in data:
@@ -42,7 +45,7 @@ class SHT3xSensor:
                     crc_calc = (crc_calc << 1) & 0xFF
         return crc_calc == crc
 
-    def read(self):
+    def read(self) -> Tuple[Optional[float], Optional[float]]:
         if self._i2c is None or not self._present:
             return None, None
         try:
