@@ -210,6 +210,137 @@ def test_sample_recorder_saves_temperatures_without_bin_ids(monkeypatch, tmp_pat
         assert float(row[label]) == embedded[idx]
 
 
+def test_sample_recorder_fetches_and_saves_weather(monkeypatch, tmp_path):
+    from tests.hydronic_slab import data_recorder
+    from tests.hydronic_slab import event_logger
+
+    log_dir = tmp_path / "logs"
+    monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
+
+    monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+    monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+
+    monkeypatch.setattr(data_recorder, "request_embedded_thermometer_temps_C", lambda expected=9: [1.0] * 9)
+    monkeypatch.setattr(data_recorder, "request_return_water_temp_C", lambda: 10.0)
+    monkeypatch.setattr(data_recorder, "measure_all_snow_depths_mm", lambda: [2.0, 2.0, 2.0])
+    monkeypatch.setattr(data_recorder.SampleRecorder, "upload_to_cloud", lambda *_, **__: None)
+
+    weather_payload = {
+        "source": "open-meteo",
+        "retrieved_at": 1700000000.0,
+        "condition": 3,
+        "solar_radiation_Wm2": 150.5,
+        "air_temp_C": -1.2,
+        "humidity_pct": 82.0,
+        "wind_speed_mps": 2.3,
+        "wind_dir_deg": 210.0,
+    }
+
+    recorder = data_recorder.SampleRecorder(
+        "weather_test", weather_fetcher=lambda: weather_payload
+    )
+    env = {"air_temp": -5.0, "humidity": 70.0, "wind_speed": 2.5, "wind_dir": 90.0, "snow_depth": 3.1}
+
+    recorder.capture_sample(env, elapsed_s=1.0, water_temp_C=5.5)
+    recorder.finalize()
+
+    sample_csv = tmp_path / "logs" / "weather_test_samples.csv"
+    weather_csv = tmp_path / "logs" / "weather_test_weather.csv"
+
+    assert sample_csv.exists()
+    assert weather_csv.exists()
+
+    with open(weather_csv, "r") as f:
+        rows = list(csv.reader(f))
+
+    assert len(rows) == 2
+    header, data = rows
+    assert header == [
+        "source",
+        "retrieved_at",
+        "condition",
+        "solar_radiation_Wm2",
+        "air_temp_C",
+        "humidity_pct",
+        "wind_speed_mps",
+        "wind_dir_deg",
+    ]
+
+    weather_row = dict(zip(header, data))
+    assert weather_row["source"] == "open-meteo"
+    assert float(weather_row["solar_radiation_Wm2"]) == weather_payload["solar_radiation_Wm2"]
+    assert float(weather_row["air_temp_C"]) == weather_payload["air_temp_C"]
+
+
+def test_sample_recorder_uploads_to_configured_endpoint(monkeypatch, tmp_path):
+    from tests.hydronic_slab import data_recorder
+    from tests.hydronic_slab import event_logger
+
+    log_dir = tmp_path / "logs"
+    monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
+    monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+    monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+
+    monkeypatch.setattr(data_recorder, "request_embedded_thermometer_temps_C", lambda expected=9: [2.0] * 9)
+    monkeypatch.setattr(data_recorder, "request_return_water_temp_C", lambda: 12.0)
+    monkeypatch.setattr(data_recorder, "measure_all_snow_depths_mm", lambda: [4.0, 5.0, 6.0])
+
+    weather_payload = {
+        "source": "open-meteo",
+        "retrieved_at": 1700000000.0,
+        "condition": 3,
+        "solar_radiation_Wm2": 150.5,
+        "air_temp_C": -1.2,
+        "humidity_pct": 82.0,
+        "wind_speed_mps": 2.3,
+        "wind_dir_deg": 210.0,
+    }
+
+    post_calls = []
+
+    def fake_post(url, files=None, data=None, timeout=None):
+        file_tuple = files.get("file")
+        post_calls.append(
+            {
+                "url": url,
+                "filename": file_tuple[0],
+                "content": file_tuple[1].read().decode(),
+                "data": data,
+                "timeout": timeout,
+            }
+        )
+
+        class Resp:
+            status_code = 200
+
+            def raise_for_status(self):
+                return None
+
+        return Resp()
+
+    recorder = data_recorder.SampleRecorder(
+        "upload_test",
+        weather_fetcher=lambda: weather_payload,
+        upload_url="https://upload.example",
+        upload_client=fake_post,
+    )
+
+    env = {"air_temp": -5.0, "humidity": 70.0, "wind_speed": 2.5, "wind_dir": 90.0, "snow_depth": 3.1}
+
+    recorder.capture_sample(env, elapsed_s=1.0, water_temp_C=5.5)
+    recorder.finalize()
+
+    filenames = {call["filename"] for call in post_calls}
+    assert filenames == {"upload_test_samples.csv", "upload_test_weather.csv"}
+    assert all(call["url"] == "https://upload.example" for call in post_calls)
+    assert all(call["data"]["test_id"] == "upload_test" for call in post_calls)
+
+
 def test_energy_occurrence_counts_persist(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(state, "STATE_FILE", "state.json")
@@ -316,6 +447,7 @@ def test_energy_test_stops_when_embedded_hits_one(monkeypatch, tmp_path):
     log_dir = tmp_path / "logs"
     monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
     monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
     monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
@@ -603,40 +735,39 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
     state.combo_counts.clear()
     state.daily_test_counts.clear()
 
-    snow_depths = iter(
-        [
-            0.0,
-            0.0,
-            0.0,
-            state.SNOW_PRESENT_THRESHOLD + 1,
-            state.SNOW_PRESENT_THRESHOLD + 2,
-            state.SNOW_PRESENT_THRESHOLD + 2,
-        ]
-    )
+    snow_depth_plan = [
+        0.0,
+        0.0,
+        0.0,
+        state.SNOW_PRESENT_THRESHOLD + 1,
+        state.SNOW_PRESENT_THRESHOLD + 2,
+        state.SNOW_PRESENT_THRESHOLD + 2,
+    ]
 
     bin_a_env = {"air": -20.0, "hum": 50.0, "wind": 5.0, "dir": 90.0}
     bin_b_env = {"air": -8.0, "hum": 20.0, "wind": 12.0, "dir": 270.0}
 
-    env_sequence = iter(
-        [
-            bin_a_env.copy(),
-            bin_a_env.copy(),
-            bin_a_env.copy(),
-            bin_a_env.copy(),
-            bin_b_env.copy(),
-            bin_b_env.copy(),
-        ]
-    )
+    env_plan = [
+        bin_a_env.copy(),
+        bin_a_env.copy(),
+        bin_a_env.copy(),
+        bin_a_env.copy(),
+        bin_b_env.copy(),
+        bin_b_env.copy(),
+    ]
 
     current_env = {"air": 0.0, "hum": 0.0, "wind": 0.0, "dir": 0.0}
+    cycle_index = 0
 
     def advance_cycle():
-        try:
-            env_vals = next(env_sequence)
-        except StopIteration:
-            env_vals = bin_b_env
+        nonlocal cycle_index
+
+        env_vals = env_plan[min(cycle_index, len(env_plan) - 1)]
         current_env.update(env_vals)
-        return next(snow_depths)
+
+        depth = snow_depth_plan[min(cycle_index, len(snow_depth_plan) - 1)]
+        cycle_index += 1
+        return depth
 
     monkeypatch.setattr(main, "load_state", lambda: None)
     monkeypatch.setattr(main, "init_log_file", lambda: None)
@@ -692,6 +823,10 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
                 test_no, duration_s, time_to_clear, 28.5
             )
         )
+        thermostat_modes = ["idle", "heating", "idle", "cooling", "idle"]
+        changes = sum(1 for prev, curr in zip(thermostat_modes, thermostat_modes[1:]) if prev != curr)
+        print(" Thermostat modes this run: {}".format(" -> ".join(thermostat_modes)))
+        print(f" Thermostat mode changes: {changes}")
         print("===== END ENERGY TEST =====\n")
 
     def fake_run_tilted(env):
@@ -740,6 +875,10 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
                 clear_depth,
             )
         )
+        thermostat_modes = ["heating", "heating", "idle", "cooling", "idle"]
+        changes = sum(1 for prev, curr in zip(thermostat_modes, thermostat_modes[1:]) if prev != curr)
+        print(" Thermostat modes this run: {}".format(" -> ".join(thermostat_modes)))
+        print(f" Thermostat mode changes: {changes}")
         print("===== END TILTED TEST =====\n")
 
     monkeypatch.setattr(main, "run_energy_test", fake_run_energy)
@@ -750,9 +889,10 @@ def test_env_bin_prints_across_snow_sequences(monkeypatch):
     main.main(cycle_period_s=0, max_cycles=6)
 
     total_runs = len(run_log)
-    print(f"TOTAL TESTS EXECUTED: {total_runs}")
+    expected_runs = 6
+    print(f"TOTAL TESTS EXECUTED: {total_runs} (expected {expected_runs})")
 
-    assert total_runs == 6
+    assert total_runs == expected_runs
 
     first_env_bin = run_log[0][1]
     assert all(run[0] == "energy" and run[1] == first_env_bin for run in run_log[:3])
@@ -936,9 +1076,24 @@ def test_two_hour_simulation_produces_six_tests(monkeypatch, tmp_path):
     monkeypatch.setattr(state, "STATE_FILE", str(tmp_path / "state.json"))
     monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
     monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
     monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
     monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+    monkeypatch.setattr(
+        data_recorder,
+        "fetch_guelph_weather",
+        lambda: {
+            "source": "stub",
+            "retrieved_at": fake_time.time(),
+            "condition": "clear",
+            "solar_radiation_Wm2": 50.0,
+            "air_temp_C": -5.0,
+            "humidity_pct": 60.0,
+            "wind_speed_mps": 3.0,
+            "wind_dir_deg": 95.0,
+        },
+    )
 
     rng = random.Random(4242)
 
@@ -1027,3 +1182,137 @@ def test_two_hour_simulation_produces_six_tests(monkeypatch, tmp_path):
     assert heater_Wh > 0
 
     assert fake_time.time() >= 6 * 20 * 60
+
+
+def test_five_hour_simulation_runs_fifteen_cycles(monkeypatch, tmp_path):
+    from tests.hydronic_slab import (
+        communication,
+        data_recorder,
+        event_logger,
+        main,
+        test_routines,
+        thermostat,
+    )
+
+    fake_time = FakeTime()
+
+    for module in (state, main, test_routines, thermostat, data_recorder, event_logger):
+        monkeypatch.setattr(module, "time", fake_time)
+
+    log_dir = tmp_path / "logs"
+    monkeypatch.setattr(state, "STATE_FILE", str(tmp_path / "state.json"))
+    monkeypatch.setattr(state, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(data_recorder, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_DIR", str(log_dir))
+    monkeypatch.setattr(event_logger, "LOG_FILE", str(log_dir / "events.csv"), raising=False)
+    monkeypatch.setattr(event_logger, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+    monkeypatch.setattr(data_recorder, "ensure_log_dir", lambda: os.makedirs(log_dir, exist_ok=True))
+
+    rng = random.Random(7)
+
+    monkeypatch.setattr(state, "_last_energy_update_time", fake_time.time())
+    monkeypatch.setattr(state, "save_state", lambda: None)
+    monkeypatch.setattr(state, "load_state", lambda: None)
+    state.init_tilt_coverage()
+    state.combo_counts.clear()
+
+    monkeypatch.setattr(state, "pump_on", lambda: print("pump_on()"))
+    monkeypatch.setattr(state, "pump_off", lambda: print("pump_off()"))
+    monkeypatch.setattr(state, "heater_on", lambda: print("heater_on()"))
+    monkeypatch.setattr(state, "heater_off", lambda: print("heater_off()"))
+
+    monkeypatch.setattr(test_routines, "ensure_supply_hot", lambda target: print("ensure_supply_hot ->", target))
+    monkeypatch.setattr(test_routines, "set_flow_level", lambda level: print("set_flow_level ->", level))
+    monkeypatch.setattr(test_routines, "set_target_angle", lambda ang: print("set_target_angle ->", ang))
+    monkeypatch.setattr(test_routines, "set_non_tilt_angle", lambda: print("set_non_tilt_angle()"))
+
+    monkeypatch.setattr(communication, "send_command_to_mega", lambda cmd: print("-> MEGA (stub):", cmd))
+    monkeypatch.setattr(main, "actuators_stop", lambda: print("actuators_stop()"))
+    monkeypatch.setattr(test_routines, "mark_angle_tested", lambda *_: None)
+
+    def temp_source():
+        while True:
+            yield round(30.0 + rng.uniform(-5.0, 6.0), 2)
+
+    temps = temp_source()
+    monkeypatch.setattr(thermostat, "request_water_temp_C", lambda: next(temps))
+
+    monkeypatch.setattr(
+        data_recorder,
+        "request_embedded_thermometer_temps_C",
+        lambda expected=9: [round(28.0 + rng.uniform(-4.0, 4.0), 2) for _ in range(expected)],
+    )
+    monkeypatch.setattr(
+        data_recorder,
+        "request_return_water_temp_C",
+        lambda: round(26.0 + rng.uniform(-3.0, 5.0), 2),
+    )
+    monkeypatch.setattr(
+        data_recorder,
+        "measure_all_snow_depths_mm",
+        lambda: [round(rng.uniform(0.2, 10.0), 2) for _ in range(3)],
+    )
+
+    snow_cycle = iter(
+        [
+            0.0,
+            6.0,
+            0.0,
+            7.5,
+            4.5,
+            9.0,
+            5.5,
+            0.0,
+            0.0,
+            8.0,
+            0.0,
+            6.5,
+            0.0,
+            0.0,
+            7.0,
+        ]
+    )
+    air_cycle = iter([-4.0, -5.5, -6.0, -3.0, -2.5, -6.2, -5.1, -4.3, -3.9, -2.8, -6.4, -5.7, -3.5, -4.8, -6.6])
+    humidity_cycle = iter([62.0, 58.0, 65.0, 50.0, 55.0, 70.0, 60.0, 52.0, 57.0, 63.0, 59.0, 66.0, 61.0, 54.0, 68.0])
+    wind_speed_cycle = iter([3.0, 2.5, 3.8, 3.2, 2.1, 3.6, 2.8, 3.3, 2.4, 3.5, 2.9, 3.1, 2.2, 3.4, 2.7])
+    wind_dir_cycle = iter([95.0, 100.0, 90.0, 110.0, 105.0, 85.0, 92.0, 88.0, 99.0, 103.0, 97.0, 91.0, 107.0, 94.0, 89.0])
+
+    monkeypatch.setattr(main, "measure_snow_depth_mm", lambda: next(snow_cycle))
+    monkeypatch.setattr(main, "read_air_temperature_C", lambda: next(air_cycle))
+    monkeypatch.setattr(main, "read_relative_humidity", lambda: next(humidity_cycle))
+    monkeypatch.setattr(main, "read_wind_speed_mps", lambda: next(wind_speed_cycle))
+    monkeypatch.setattr(main, "read_wind_direction_deg", lambda: next(wind_dir_cycle))
+    monkeypatch.setattr(main, "request_slab_angle_deg", lambda: 0.0)
+
+    tilt_sequences = [
+        iter([12.0, 9.5, 7.0, 4.5, 2.0, 0.0]),
+        iter([14.0, 10.0, 6.0, 3.0, 1.0, 0.0]),
+        iter([9.5, 7.0, 4.0, 2.0, 0.5, 0.0]),
+        iter([11.0, 8.0, 5.0, 2.5, 1.0, 0.0]),
+        iter([10.0, 7.5, 5.0, 2.5, 1.0, 0.0]),
+        iter([13.0, 9.0, 6.0, 3.0, 1.0, 0.0]),
+        iter([12.5, 9.0, 6.0, 3.0, 1.0, 0.0]),
+    ]
+    tilt_iter = iter(tilt_sequences)
+
+    original_run_tilted = test_routines.run_tilted_test
+
+    def run_tilted_with_sequence(env):
+        seq = next(tilt_iter)
+        monkeypatch.setattr(test_routines, "measure_snow_depth_mm", lambda: next(seq))
+        return original_run_tilted(env)
+
+    monkeypatch.setattr(main, "run_tilted_test", run_tilted_with_sequence)
+
+    fake_time.sleep(0)
+
+    main.main(cycle_period_s=20 * 60, max_cycles=15)
+
+    csv_files = list(log_dir.glob("*_samples.csv"))
+    assert len(csv_files) == 15
+
+    pump_Wh, heater_Wh = state.get_energy_totals_Wh()
+    assert pump_Wh > 0
+    assert heater_Wh > 0
+
+    assert fake_time.time() >= 15 * 20 * 60

@@ -1,5 +1,6 @@
 """Unit coverage for the hardware smoke-test helper."""
 
+from pathlib import Path
 from typing import Dict, Optional
 
 import pytest
@@ -116,3 +117,23 @@ def test_run_hardware_test_uses_clock_sleep(monkeypatch, capsys):
     out_lines = capsys.readouterr().out.strip().split("\n")
     assert len([l for l in out_lines if l.startswith("Ultrasonic")]) == 2
     assert clock.slept == [0.5, 0.5]
+
+
+def test_no_cpython_only_imports_in_micropython_files():
+    # Guard that MicroPython-facing modules avoid CPython-only imports such as
+    # __future__, typing, runpy, pathlib, or dataclasses to keep on-device
+    # execution clean.
+    banned = ["from __future__", "typing", "runpy", "pathlib", "dataclasses"]
+    targets = [
+        "tests/hydronic_slab/hardware_readings.py",
+        "tests/hydronic_slab/hardware_io.py",
+        "tests/hydronic_slab/sensors/ds18b20.py",
+        "tests/hydronic_slab/sensors/flow_sensor.py",
+        "tests/hydronic_slab/sensors/sht3x_sensor.py",
+        "tests/hydronic_slab/sensors/ultrasonic.py",
+    ]
+
+    for path in targets:
+        text = Path(path).read_text()
+        for needle in banned:
+            assert needle not in text, f"{needle} should not appear in {path}"

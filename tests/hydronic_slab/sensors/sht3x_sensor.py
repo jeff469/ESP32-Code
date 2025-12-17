@@ -1,9 +1,6 @@
 """SHT3x single-shot reader using the validated ESP32 wiring."""
 
-from __future__ import annotations
-
 import struct
-from typing import Optional, Tuple
 
 try:  # MicroPython
     from machine import I2C, Pin
@@ -20,7 +17,7 @@ SHT3X_DELAY_S = 0.020
 class SHT3xSensor:
     """Single-shot SHT3x helper that mirrors the standalone test script."""
 
-    def __init__(self, *, clock) -> None:
+    def __init__(self, *, clock=None):
         self.clock = clock
         self._present = False
         if I2C is not None:
@@ -33,7 +30,7 @@ class SHT3xSensor:
             self._i2c = None
 
     @staticmethod
-    def _crc_ok(data: bytes, crc: int) -> bool:
+    def _crc_ok(data, crc):
         poly = 0x31
         crc_calc = 0xFF
         for byte in data:
@@ -45,7 +42,7 @@ class SHT3xSensor:
                     crc_calc = (crc_calc << 1) & 0xFF
         return crc_calc == crc
 
-    def read(self) -> Tuple[Optional[float], Optional[float]]:
+    def read(self):
         if self._i2c is None or not self._present:
             return None, None
         try:
