@@ -9,11 +9,21 @@ except Exception:
 import config
 
 
+def _exists(path):
+    try:
+        os.stat(path)
+        return True
+    except OSError:
+        return False
+
+
 def ensure_dirs():
-    if not os.path.exists(config.LOG_DIR):
+    if not _exists(config.LOG_DIR):
         os.mkdir(config.LOG_DIR)
-    if not os.path.exists("state"):
-        os.mkdir("state")
+    if "state" in config.STATE_PATH:
+        dir_path = config.STATE_PATH.rsplit("/", 1)[0]
+        if dir_path and not _exists(dir_path):
+            os.mkdir(dir_path)
 
 
 def timestamp():
@@ -28,7 +38,7 @@ def log_path(trial_num, tilted):
 
 
 def write_header(path):
-    if os.path.exists(path):
+    if _exists(path):
         return
     header = (
         "ts,snow_depth_cm,distances_cm,ambient_th,wind_sd,flows,fluid_temps,pavement_avg,"

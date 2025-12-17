@@ -1,4 +1,3 @@
-import os
 import time
 
 try:
@@ -8,7 +7,7 @@ except Exception:
 
 import config
 import sensors
-import state
+import glacial_state as state
 import logger
 from mega import MegaController
 
@@ -49,6 +48,9 @@ def snow_depth_cm(distances):
 
 
 def wait_for_rest(seconds):
+    if config.RUN_ONCE:
+        print("RUN_ONCE enabled, skipping rest period")
+        return
     print("Resting for", seconds, "seconds")
     end = time.time() + seconds
     while time.time() < end:
@@ -206,6 +208,10 @@ def main_loop():
         else:
             bin_index = state.bump_bin_count(st, bin_id, 6)
             run_non_tilted(suite, mg, st, bin_id, bin_index)
+
+        if config.RUN_ONCE:
+            print("RUN_ONCE set, exiting after single trial")
+            break
 
 
 if __name__ == "__main__":

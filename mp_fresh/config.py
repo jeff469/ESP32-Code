@@ -2,6 +2,7 @@
 # Avoid forbidden imports; keep constants simple.
 
 SMOKE_TEST = False
+RUN_ONCE = True
 
 # Pin assignments
 ULTRASONIC_PINS = {
