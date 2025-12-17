@@ -30,6 +30,7 @@ def run_tilted_test(env):
     """
     Run a tilted melt-time test when snow is present.
     """
+    print("\n===== START TILTED TEST =====")
     print("\n===== BEGIN TILTED TEST =====")
     snow_depth = env["snow_depth"]
     start_snow_depth = snow_depth
@@ -69,6 +70,8 @@ def run_tilted_test(env):
     log_event("TILTED_START", env, extra_start)
 
     print(
+        "TILTED TEST #{} ON {} | env_bin {} | angle {} DEG | repetition #{}".format(
+            test_no, day_key, env_bin, target_ang, repetition_count + 1
         "TILTED TEST START -> TEST #{} ANGLE {} DEG | env_bin {} | repetition #{}".format(
             test_no, target_ang, env_bin, repetition_count + 1
         )
@@ -79,6 +82,7 @@ def run_tilted_test(env):
 
     set_target_angle(target_ang)
     print(
+        " Actuator target angle:",
         "Actuating to target angle:",
         target_ang,
         "(repetition #{})".format(repetition_count + 1),
@@ -143,6 +147,20 @@ def run_tilted_test(env):
             )
             pump_Wh_now, heater_Wh_now = get_energy_totals_Wh()
             print(
+                " Sample @ {:>4.0f}s -> TEST #{} | env_bin {} | REP {} | angle {:>2} DEG | snow depth {:>5.2f} mm (melted {:>5.2f} mm) | water {:>5.2f} °C | pump Wh {:>5.3f} | heater Wh {:>5.3f}".format(
+                    elapsed,
+                    test_no,
+                    env_bin,
+                    repetition_count + 1,
+                    target_ang,
+                    current_snow,
+                    start_snow_depth - current_snow,
+                    water_temp,
+                    pump_Wh_now - pump_Wh_start,
+                    heater_Wh_now - heater_Wh_start,
+                )
+            )
+            last_sample_time = now
                 "Tilted test status @",
                 round(elapsed, 1),
                 "s -> TEST #",
@@ -248,6 +266,7 @@ def run_energy_test(env):
     EMBEDDED_CLEAR_TEMP_C = 1.0
     MAX_TEST_DUR = 15 * 60  # 15 minutes
 
+    print("\n===== START ENERGY TEST =====")
     print("\n===== BEGIN ENERGY TEST =====")
     air_temp = env["air_temp"]
     humidity = env["humidity"]
@@ -283,6 +302,11 @@ def run_energy_test(env):
     log_event("ENERGY_START", env, extra_start)
 
     print(
+        "ENERGY TEST #{} ON {} | env_bin {} | angle {} DEG".format(
+            test_no, day_key, combo_key, NON_TILTED_ANGLE_DEG
+        )
+    )
+    print(" Actuator target angle:", NON_TILTED_ANGLE_DEG, "(non-tilted mode)")
         "ENERGY TEST START -> TEST #{} ANGLE {} DEG | env_bin {}".format(
             test_no, NON_TILTED_ANGLE_DEG, combo_key
         )
@@ -345,6 +369,19 @@ def run_energy_test(env):
             embedded = [t for t in sample.get("embedded_temps_C", []) if t is not None]
             avg_embedded_temp = sum(embedded) / len(embedded) if embedded else None
             last_sample = now
+            pump_Wh_now, heater_Wh_now = get_energy_totals_Wh()
+            avg_display = f"{round(avg_embedded_temp, 3):>5}" if avg_embedded_temp is not None else "  N/A"
+            return_display = f"{last_return_temp:>5}" if last_return_temp is not None else "  N/A"
+            print(
+                " Sample @ {:>4.0f}s -> TEST #{} | env_bin {} | avg embedded {} °C | return {} °C | pump Wh {:>5.3f} | heater Wh {:>5.3f}".format(
+                    elapsed,
+                    test_no,
+                    combo_key,
+                    avg_display,
+                    return_display,
+                    pump_Wh_now - pump_Wh_start,
+                    heater_Wh_now - heater_Wh_start,
+                )
             print(
                 "Energy test -> TEST #",
                 test_no,
