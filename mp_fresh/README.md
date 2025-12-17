@@ -19,12 +19,12 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 - Bin count→angle: 0→0°,1→10°,2→20°,3→30°,4→40° then reset to 0.
 - Heat fluid to 36 °C, move actuator to angle, pump ON.
 - Log every 10 s to `/logs/YYYYMMDD_HHMMSS_trialNN_tilted.csv`.
-- Stop when snow depth ≤1 cm or 15 min elapsed. Then slope 5°, pump/heater OFF, rest 20 min.
+- Stop when snow depth ≤1 cm or 15 min elapsed. Then slope 5°, pump/heater OFF, rest ~1 min.
 
 ### Non-tilted test
 - Bin count→target temp: [36, 36×1.05, 36×1.10, 36×1.15, 36×0.95, 36×0.90, 36×0.85] then reset.
 - Heat to target, angle 0°, pump ON.
-- Stop when avg pavement ≥0.7 °C or 15 min. Then slope 5°, pump/heater OFF, rest 20 min.
+- Stop when avg pavement ≥0.7 °C or 15 min. Then slope 5°, pump/heater OFF, rest ~1 min.
 
 ## Testing modes
 - Set `SMOKE_TEST=True` in `config.py` to read each real sensor once and send Mega commands `H→h`, `P→p`, `U→S→D→S`. All actions print to serial.

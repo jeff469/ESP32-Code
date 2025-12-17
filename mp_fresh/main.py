@@ -58,18 +58,26 @@ def wait_for_rest(seconds):
         return
     print("Resting for", seconds, "seconds")
     end = time.time() + seconds
+    next_report = time.time()
     while time.time() < end:
+        if time.time() >= next_report:
+            remaining = int(end - time.time())
+            print("Rest remaining", remaining, "s")
+            next_report = time.time() + 10
         time.sleep(1)
 
 
 def heat_to_target(mg, thermo, target):
     start = time.time()
     mg.heater_on()
+    print("Heating to target", target)
     while True:
         t_now = thermo.read_temp_c()
+        elapsed = time.time() - start
+        print("Heating status temp", t_now, "elapsed", int(elapsed), "s")
         if t_now >= target:
             break
-        if time.time() - start >= config.HEAT_TIMEOUT_SECONDS:
+        if elapsed >= config.HEAT_TIMEOUT_SECONDS:
             print(
                 "heater timeout at",
                 int(config.HEAT_TIMEOUT_SECONDS),
@@ -89,6 +97,18 @@ def run_tilted(suite, mg, st, bin_id, bin_index):
     path = logger.log_path(trial_num, True)
     log = logger.CSVLogger(path)
     angle = min(bin_index * 10, config.TILTED_MAX_ANGLE)
+    print(
+        "Starting tilted trial",
+        trial_num,
+        "bin",
+        bin_id,
+        "index",
+        bin_index,
+        "angle",
+        angle,
+        "log",
+        path,
+    )
     heat_to_target(mg, suite.thermo_real, config.TARGET_TEMP_C)
     mg.set_angle_deg(angle)
     mg.pump_on()
@@ -118,6 +138,20 @@ def run_tilted(suite, mg, st, bin_id, bin_index):
                 "heater": "off",
             }
         )
+        remaining = int(config.TRIAL_MAX_SECONDS - (time.time() - start))
+        print(
+            "Tilted tick snow",
+            snow,
+            "temps",
+            temps,
+            "flows",
+            flows,
+            "pav_avg",
+            avg(pav),
+            "remaining",
+            remaining,
+            "s",
+        )
         if snow <= config.SNOW_CLEAR_CM:
             print("Tilted test ended: snow clear")
             break
@@ -138,6 +172,18 @@ def run_non_tilted(suite, mg, st, bin_id, bin_index):
     log = logger.CSVLogger(path)
     targets = config.NON_TILTED_TARGETS
     target = targets[bin_index] if bin_index < len(targets) else targets[0]
+    print(
+        "Starting non-tilted trial",
+        trial_num,
+        "bin",
+        bin_id,
+        "index",
+        bin_index,
+        "target",
+        target,
+        "log",
+        path,
+    )
     heat_to_target(mg, suite.thermo_real, target)
     mg.set_angle_deg(0)
     mg.pump_on()
@@ -167,6 +213,20 @@ def run_non_tilted(suite, mg, st, bin_id, bin_index):
                 "pump": "on",
                 "heater": "off",
             }
+        )
+        remaining = int(config.TRIAL_MAX_SECONDS - (time.time() - start))
+        print(
+            "Non-tilted tick snow",
+            snow,
+            "pav_avg",
+            pav_avg,
+            "temps",
+            temps,
+            "flows",
+            flows,
+            "remaining",
+            remaining,
+            "s",
         )
         if pav_avg >= config.PAVEMENT_CLEAR_C:
             print("Non-tilted test ended: pavement warm")
@@ -256,12 +316,28 @@ def main_loop():
         amb = suite.ambient_real.read()
         wind = suite.read_wind()
         bin_id = build_bin_id(amb, wind)
-        print("Bin ID", bin_id, "snow depth", snow)
+        current_count = state.get_bin_count(st, bin_id)
+        print(
+            "Bin ID",
+            bin_id,
+            "snow depth",
+            snow,
+            "ambient",
+            amb,
+            "wind",
+            wind,
+            "prev count",
+            current_count,
+        )
         if snow >= config.SNOW_THRESHOLD_CM:
             bin_index = state.bump_bin_count(st, bin_id, 4)
+            print("Tilted path selected; using bin index", bin_index)
+            print("Updated bin count now", state.get_bin_count(st, bin_id))
             run_tilted(suite, mg, st, bin_id, bin_index)
         else:
             bin_index = state.bump_bin_count(st, bin_id, 6)
+            print("Non-tilted path selected; using bin index", bin_index)
+            print("Updated bin count now", state.get_bin_count(st, bin_id))
             run_non_tilted(suite, mg, st, bin_id, bin_index)
 
         if config.RUN_ONCE:
