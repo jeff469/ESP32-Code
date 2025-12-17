@@ -1,6 +1,9 @@
 """Hardware-facing helpers for ESP32 + Mega using real sensor wiring."""
 
+from __future__ import annotations
+
 import time
+from typing import Dict, List, Optional, Tuple
 
 from tests.hydronic_slab.sensors.ds18b20 import (
     DS18B20_CONVERSION_DELAY_S,
@@ -18,20 +21,10 @@ except ImportError:  # pragma: no cover - desktop fallback for pytest
 class Clock:
     """Basic wall clock with injectable sleep for deterministic scheduling."""
 
-    def __init__(self):
-        # MicroPython may not expose ``time.monotonic``, so fall back to ticks_ms
-        # (monotonic) or time.time (epoch) to keep scheduling predictable.
-        self._has_ticks = hasattr(time, "ticks_ms")
-        self._mono = getattr(time, "monotonic", None)
+    def now(self) -> float:
+        return time.monotonic()
 
-    def now(self):
-        if self._has_ticks:
-            return time.ticks_ms() / 1000.0
-        if self._mono is not None:
-            return self._mono()
-        return time.time()
-
-    def sleep(self, dt):
+    def sleep(self, dt: float) -> None:
         time.sleep(dt)
 
 
@@ -41,14 +34,14 @@ class MegaRelayDriver:
     def __init__(
         self,
         *,
-        uart=None,
-        baudrate=9600,
-        protocol="line",
-        clock=None,
-        command_log=None,
-        tx_pin=17,
-        rx_pin=16,
-    ):
+        uart: Optional[UART] = None,
+        baudrate: int = 9600,
+        protocol: str = "line",
+        clock: Optional[Clock] = None,
+        command_log: Optional[List[Tuple[float, str]]] = None,
+        tx_pin: int = 17,
+        rx_pin: int = 16,
+    ) -> None:
         self.clock = clock or Clock()
         self.protocol = protocol
         self.command_log = command_log
@@ -58,50 +51,50 @@ class MegaRelayDriver:
         self.uart = uart
 
     # Low-level helpers -------------------------------------------------
-    def _write(self, payload):
+    def _write(self, payload: bytes) -> None:
         if self.uart is not None:
             self.uart.write(payload)
 
-    def _record(self, cmd):
+    def _record(self, cmd: str) -> None:
         if self.command_log is not None:
             self.command_log.append((self.clock.now(), cmd))
 
-    def send_line(self, text):
+    def send_line(self, text: str) -> None:
         payload = (text + "\n").encode()
         self._write(payload)
         self._record(text)
 
-    def send_char(self, ch):
+    def send_char(self, ch: str) -> None:
         payload = ch.encode()
         self._write(payload)
         self._record(ch)
 
     # Public relay methods ----------------------------------------------
-    def pump(self, on):
+    def pump(self, on: bool) -> None:
         if self.protocol == "line":
             self.send_line("PUMP:ON" if on else "PUMP:OFF")
         else:
             self.send_char("P" if on else "p")
 
-    def heater(self, on):
+    def heater(self, on: bool) -> None:
         if self.protocol == "line":
             self.send_line("HEATER:ON" if on else "HEATER:OFF")
         else:
             self.send_char("H" if on else "h")
 
-    def sol_a(self, open):
+    def sol_a(self, open: bool) -> None:
         if self.protocol == "line":
             self.send_line("SOL_A:ON" if open else "SOL_A:OFF")
         else:
             self.send_char("A" if open else "a")
 
-    def sol_b(self, open):
+    def sol_b(self, open: bool) -> None:
         if self.protocol == "line":
             self.send_line("SOL_B:ON" if open else "SOL_B:OFF")
         else:
             self.send_char("B" if open else "b")
 
-    def actuator(self, cmd):
+    def actuator(self, cmd: str) -> None:
         cmd = cmd.upper()
         if cmd not in {"UP", "DOWN", "STOP"}:
             raise ValueError(f"Unknown actuator command: {cmd}")
@@ -114,20 +107,20 @@ class MegaRelayDriver:
 
 def read_environment(
     *,
-    ds_bus,
-    flow,
-    sht,
-    clock=None,
+    ds_bus: Ds18b20Bus,
+    flow: FlowSensor,
+    sht: SHT3xSensor,
+    clock: Optional[Clock] = None,
     flow_window_s: float = DEFAULT_WINDOW_S,
     blocking_flow: bool = False,
-):
+) -> Dict[str, object]:
     """Collect a single environment snapshot with deterministic timing."""
 
     clk = clock or Clock()
     # kick conversions early so control loops can overlap timing with other work
     ds_bus.start_conversion()
     temps = ds_bus.read_all_c(wait=True)
-    flow_reading = flow.measure(window_s=flow_window_s, blocking=blocking_flow)
+    flow_reading: FlowReading = flow.measure(window_s=flow_window_s, blocking=blocking_flow)
     air_temp, rh = sht.read()
 
     return {

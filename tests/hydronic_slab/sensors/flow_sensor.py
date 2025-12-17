@@ -5,7 +5,11 @@ GPIO5 with a 2 ms glitch filter, a 1.5 s measurement window, and a calibration
 constant of ~450 pulses per liter (about 7.5 Hz per L/min).
 """
 
+from __future__ import annotations
+
 import time
+from dataclasses import dataclass
+from typing import Optional
 
 try:  # MicroPython
     from machine import Pin
@@ -18,22 +22,22 @@ DEFAULT_WINDOW_S = 1.5
 DEFAULT_PULSES_PER_LITER = 450.0
 
 
+@dataclass
 class FlowReading:
-    def __init__(self, pulses, duration_s, hz, lpm):
-        self.pulses = pulses
-        self.duration_s = duration_s
-        self.hz = hz
-        self.lpm = lpm
+    pulses: int
+    duration_s: float
+    hz: float
+    lpm: float
 
 
-def _ticks_us():
+def _ticks_us() -> int:
     try:
         return time.ticks_us()  # type: ignore[attr-defined]
     except AttributeError:  # pragma: no cover - desktop fallback
         return int(time.monotonic() * 1_000_000)
 
 
-def _ticks_diff(new, old):
+def _ticks_diff(new: int, old: int) -> int:
     try:
         return time.ticks_diff(new, old)  # type: ignore[attr-defined]
     except AttributeError:  # pragma: no cover - desktop fallback
@@ -45,18 +49,18 @@ class FlowSensor:
 
     def __init__(
         self,
-        pin=FLOW_SENSOR_PIN,
+        pin: int = FLOW_SENSOR_PIN,
         *,
-        clock=None,
-        pulses_per_liter=DEFAULT_PULSES_PER_LITER,
-        attach_irq=True,
-    ):
+        clock,
+        pulses_per_liter: float = DEFAULT_PULSES_PER_LITER,
+        attach_irq: bool = True,
+    ) -> None:
         self.clock = clock
         self.pulses_per_liter = pulses_per_liter
         self._count = 0
-        self._last_pulse_us = None
+        self._last_pulse_us: Optional[int] = None
         self._last_rate_hz: float = 0.0
-        self._last_rate_time = None
+        self._last_rate_time: Optional[float] = None
 
         if Pin is not None and attach_irq:
             # Mirror the standalone script: GPIO5, pull-up enabled, falling-edge IRQ.
@@ -76,13 +80,13 @@ class FlowSensor:
         self._count += 1
 
     # Helpers for tests ---------------------------------------------
-    def simulate_pulses(self, n, spacing_s=0.1):
+    def simulate_pulses(self, n: int, spacing_s: float = 0.1) -> None:
         for _ in range(n):
             self._count += 1
             self.clock.sleep(spacing_s)
 
     # Rate calculation ----------------------------------------------
-    def measure(self, window_s=DEFAULT_WINDOW_S, *, blocking=False):
+    def measure(self, window_s: float = DEFAULT_WINDOW_S, *, blocking: bool = False) -> FlowReading:
         if blocking:
             start = self.clock.now()
             start_count = self._count
@@ -112,8 +116,8 @@ class FlowSensor:
         lpm = (hz * 60.0) / self.pulses_per_liter if self.pulses_per_liter else 0.0
         return FlowReading(pulses=pulses, duration_s=elapsed, hz=hz, lpm=lpm)
 
-    def measure_hz(self, window_s=DEFAULT_WINDOW_S, *, blocking=False):
+    def measure_hz(self, window_s: float = DEFAULT_WINDOW_S, *, blocking: bool = False) -> float:
         return self.measure(window_s=window_s, blocking=blocking).hz
 
-    def measure_lpm(self, window_s=DEFAULT_WINDOW_S, *, blocking=False):
+    def measure_lpm(self, window_s: float = DEFAULT_WINDOW_S, *, blocking: bool = False) -> float:
         return self.measure(window_s=window_s, blocking=blocking).lpm

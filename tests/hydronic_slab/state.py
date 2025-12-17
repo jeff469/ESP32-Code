@@ -17,11 +17,7 @@ ANGLE_BINS = [0, 10, 20, 30, 40]
 ANGLE_TOLERANCE = 0.5
 NON_TILTED_ANGLE_DEG = 5.0
 
-# Environment bin counts (per variable)
-AIR_TEMP_BINS = 6
-HUMIDITY_BINS = 4
-WIND_SPEED_BINS = 6
-WIND_DIR_BINS = 6
+N_BINS_ENV = 10
 AIR_TEMP_MIN = -30.0
 AIR_TEMP_MAX = 10.0
 HUMIDITY_MIN = 0.0
@@ -285,10 +281,10 @@ def bin_env_variable(value, vmin, vmax, n_bins):
 
 
 def bin_non_tilt_env(air_temp, humidity, wind_speed, wind_dir):
-    b_air = bin_env_variable(air_temp, AIR_TEMP_MIN, AIR_TEMP_MAX, AIR_TEMP_BINS)
-    b_hum = bin_env_variable(humidity, HUMIDITY_MIN, HUMIDITY_MAX, HUMIDITY_BINS)
-    b_wind = bin_env_variable(wind_speed, WIND_SPEED_MIN, WIND_SPEED_MAX, WIND_SPEED_BINS)
-    b_dir = bin_env_variable(wind_dir, WIND_DIR_MIN, WIND_DIR_MAX, WIND_DIR_BINS)
+    b_air = bin_env_variable(air_temp, AIR_TEMP_MIN, AIR_TEMP_MAX, N_BINS_ENV)
+    b_hum = bin_env_variable(humidity, HUMIDITY_MIN, HUMIDITY_MAX, N_BINS_ENV)
+    b_wind = bin_env_variable(wind_speed, WIND_SPEED_MIN, WIND_SPEED_MAX, N_BINS_ENV)
+    b_dir = bin_env_variable(wind_dir, WIND_DIR_MIN, WIND_DIR_MAX, N_BINS_ENV)
     return (b_air, b_hum, b_wind, b_dir)
 
 BASE_PATTERN = [

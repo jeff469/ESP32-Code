@@ -7,19 +7,23 @@ Each pass prints a compact line that can be monitored over the serial console
 to verify live values.
 """
 
+from __future__ import annotations
+
+from typing import Dict, Iterable, Optional
+
 from tests.hydronic_slab.hardware_io import Clock, Ds18b20Bus, FlowSensor, SHT3xSensor
-from tests.hydronic_slab.sensors.flow_sensor import DEFAULT_WINDOW_S
+from tests.hydronic_slab.sensors.flow_sensor import DEFAULT_WINDOW_S, FlowReading
 from tests.hydronic_slab.sensors.ultrasonic import measure_all_snow_depths_mm
 
 
 def collect_readings(
     *,
-    clock=None,
-    ds_bus=None,
-    flow=None,
-    sht=None,
-    flow_window_s=DEFAULT_WINDOW_S,
-):
+    clock: Optional[Clock] = None,
+    ds_bus: Optional[Ds18b20Bus] = None,
+    flow: Optional[FlowSensor] = None,
+    sht: Optional[SHT3xSensor] = None,
+    flow_window_s: float = DEFAULT_WINDOW_S,
+) -> Dict[str, object]:
     """Capture one set of readings from all hardware sensors.
 
     The order mirrors the requested print layout: ultrasonic depths first,
@@ -40,7 +44,7 @@ def collect_readings(
     bus.start_conversion()
     water_temps_c = bus.read_all_c(wait=True)
 
-    flow_reading = flow_sensor.measure(window_s=flow_window_s, blocking=True)
+    flow_reading: FlowReading = flow_sensor.measure(window_s=flow_window_s, blocking=True)
 
     return {
         "depths_mm": depths_mm,
@@ -51,13 +55,11 @@ def collect_readings(
     }
 
 
-def _fmt_depths(depths):
-    if not depths:
-        return "n/a"
+def _fmt_depths(depths: Iterable[float]) -> str:
     return ", ".join(f"{d:.1f}" for d in depths)
 
 
-def _fmt_temps(temps):
+def _fmt_temps(temps: Dict[str, Optional[float]]) -> str:
     parts = []
     for name, value in temps.items():
         if value is None:
@@ -67,20 +69,17 @@ def _fmt_temps(temps):
     return ", ".join(parts)
 
 
-def print_readings(sample):
+def print_readings(sample: Dict[str, object]) -> None:
     """Emit a serial-friendly summary in the desired order."""
 
     depths = sample.get("depths_mm") or []
     air_temp_c = sample.get("air_temp_c")
     rh_pct = sample.get("rh_pct")
     temps = sample.get("water_temps_c") or {}
-    flow = sample.get("flow")
+    flow: FlowReading = sample.get("flow")  # type: ignore[assignment]
 
     print(f"Ultrasonic snow depths (mm): {_fmt_depths(depths)}")
-    if air_temp_c is None or rh_pct is None:
-        print("SHT3x ambient -> temp: n/a, RH: n/a")
-    else:
-        print(f"SHT3x ambient -> temp: {air_temp_c:.2f} C, RH: {rh_pct:.2f}%")
+    print(f"SHT3x ambient -> temp: {air_temp_c:.2f} C, RH: {rh_pct:.2f}%")
     print(f"DS18B20 water temps -> {_fmt_temps(temps)}")
     print(
         "Flow sensor -> pulses: {pulses} | Hz: {hz:.2f} | L/min: {lpm:.2f}"
@@ -90,13 +89,13 @@ def print_readings(sample):
 
 def run_hardware_test(
     *,
-    iterations=None,
-    interval_s=2.0,
-    clock=None,
-    ds_bus=None,
-    flow=None,
-    sht=None,
-):
+    iterations: Optional[int] = None,
+    interval_s: float = 2.0,
+    clock: Optional[Clock] = None,
+    ds_bus: Optional[Ds18b20Bus] = None,
+    flow: Optional[FlowSensor] = None,
+    sht: Optional[SHT3xSensor] = None,
+) -> None:
     """Continuously stream readings with optional iteration and sleep control."""
 
     clk = clock or Clock()

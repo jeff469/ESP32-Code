@@ -7,13 +7,6 @@ import json
 class DummyPin:
     def __init__(self, pin, *_, **__):
         self.pin = pin
-        self._value = 0
-
-    def value(self, v=None):
-        if v is None:
-            return self._value
-        self._value = v
-        return self._value
 
 
 # Provide simple direction constants expected by sensor helpers
