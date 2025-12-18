@@ -48,8 +48,14 @@ class StubUltrasonicSensor:
 class SHT3xSensor:
     def __init__(self, sda, scl, addr=config.SHT3X_ADDR):
         self.addr = addr
-        self.i2c = machine.I2C(1, sda=machine.Pin(sda), scl=machine.Pin(scl))
         self.failed = False
+        try:
+            self.i2c = machine.I2C(1, sda=machine.Pin(sda), scl=machine.Pin(scl))
+        except Exception as exc:
+            # If the sensor is missing or I2C fails to init, fall back to stub values.
+            print("Ambient sensor init failed; using stub:", exc)
+            self.failed = True
+            self.i2c = None
 
     def read(self):
         if self.failed:
@@ -121,28 +127,53 @@ class StubFlowSensor:
 class FluidThermometer:
     def __init__(self, pin_no):
         self.dat = machine.Pin(pin_no)
+        self.last_good = None
+        self.rom = None
         if onewire is not None and ds18x20 is not None:
             self.ow = onewire.OneWire(self.dat)
             self.ds = ds18x20.DS18X20(self.ow)
             roms = self.ds.scan()
-            self.rom = roms[0] if roms else None
+            if roms:
+                self.rom = roms[0]
+            else:
+                print("DS18B20 scan found no devices; using stub until available")
         else:
             self.ow = None
             self.ds = None
-            self.rom = None
+
+    def _ensure_rom(self):
+        if self.ds is None:
+            return False
+        if self.rom is not None:
+            return True
+        try:
+            roms = self.ds.scan()
+            if roms:
+                self.rom = roms[0]
+                print("DS18B20 discovered after rescan")
+                return True
+        except Exception as exc:
+            print("DS18B20 rescan failed; using stub:", exc)
+        return False
 
     def read_temp_c(self):
-        if self.ds is None or self.rom is None:
+        if not self._ensure_rom():
             return config.STUB_FLUID_TEMP_C
-        try:
-            self.ds.convert_temp()
-            time.sleep_ms(750)
-            temp = self.ds.read_temp(self.rom)
-            return temp
-        except Exception as exc:
-            # CRC errors or bus glitches should not crash the main loop
-            print("DS18B20 read error, returning stub:", exc)
-            return config.STUB_FLUID_TEMP_C
+        for attempt in range(2):
+            try:
+                self.ds.convert_temp()
+                time.sleep_ms(750)
+                temp = self.ds.read_temp(self.rom)
+                if temp is not None:
+                    self.last_good = temp
+                    return temp
+            except Exception as exc:
+                print("DS18B20 read attempt", attempt + 1, "failed;", exc)
+        if self.last_good is not None:
+            print("Using last good DS18B20 reading", self.last_good)
+            return self.last_good
+        print("DS18B20 unavailable; using stub temp")
+        return config.STUB_FLUID_TEMP_C
 
 
 class StubFluidThermometer:
