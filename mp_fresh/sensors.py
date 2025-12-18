@@ -49,18 +49,26 @@ class SHT3xSensor:
     def __init__(self, sda, scl, addr=config.SHT3X_ADDR):
         self.addr = addr
         self.i2c = machine.I2C(1, sda=machine.Pin(sda), scl=machine.Pin(scl))
+        self.failed = False
 
     def read(self):
-        # Single shot high repeatability, clock stretching disabled
-        cmd = bytearray([0x24, 0x00])
-        self.i2c.writeto(self.addr, cmd)
-        time.sleep_ms(15)
-        data = self.i2c.readfrom(self.addr, 6)
-        t_raw = data[0] << 8 | data[1]
-        h_raw = data[3] << 8 | data[4]
-        temperature = -45 + (175 * t_raw / 65535)
-        humidity = 100 * h_raw / 65535
-        return temperature, humidity
+        if self.failed:
+            return config.STUB_AMBIENT
+        try:
+            # Single shot high repeatability, clock stretching disabled
+            cmd = bytearray([0x24, 0x00])
+            self.i2c.writeto(self.addr, cmd)
+            time.sleep_ms(15)
+            data = self.i2c.readfrom(self.addr, 6)
+            t_raw = data[0] << 8 | data[1]
+            h_raw = data[3] << 8 | data[4]
+            temperature = -45 + (175 * t_raw / 65535)
+            humidity = 100 * h_raw / 65535
+            return temperature, humidity
+        except Exception as exc:
+            print("Ambient sensor read failed; using stub:", exc)
+            self.failed = True
+            return config.STUB_AMBIENT
 
 
 class StubAmbientSensor:
