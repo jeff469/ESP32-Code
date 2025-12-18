@@ -126,10 +126,15 @@ class FluidThermometer:
     def read_temp_c(self):
         if self.ds is None or self.rom is None:
             return config.STUB_FLUID_TEMP_C
-        self.ds.convert_temp()
-        time.sleep_ms(750)
-        temp = self.ds.read_temp(self.rom)
-        return temp
+        try:
+            self.ds.convert_temp()
+            time.sleep_ms(750)
+            temp = self.ds.read_temp(self.rom)
+            return temp
+        except Exception as exc:
+            # CRC errors or bus glitches should not crash the main loop
+            print("DS18B20 read error, returning stub:", exc)
+            return config.STUB_FLUID_TEMP_C
 
 
 class StubFluidThermometer:

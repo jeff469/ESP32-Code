@@ -92,7 +92,19 @@ def heat_to_target(mg, thermo, target):
     print("target temp reached or timeout in", int(elapsed), "seconds")
 
 
-def run_tilted(suite, mg, st, bin_id, bin_index):
+def print_sensor_sources(suite):
+    print("Sensor sources:")
+    print("  Ultrasonic[0] REAL trig", config.ULTRASONIC_PINS["trig"], "echo", config.ULTRASONIC_PINS["echo"])
+    print("  Ultrasonic[1-3] STUB values", config.STUB_ULTRASONIC_CM)
+    print("  Fluid temp[0] REAL pin", config.DS18B20_PIN, "temp[1] STUB", config.STUB_FLUID_TEMP_C)
+    print("  Ambient[0] REAL I2C1 SDA", config.I2C_SDA, "SCL", config.I2C_SCL, "others STUB")
+    print("  Flow[0] REAL pin", config.FLOW_PIN, "others STUB")
+    print("  Wind STUB", config.STUB_WIND)
+    print("  Pavement STUB count 10 value", config.STUB_PAVEMENT_TEMP_C)
+    print("RUN_ONCE", config.RUN_ONCE, "SMOKE_TEST", config.SMOKE_TEST, "DIAGNOSTIC_TEST", config.DIAGNOSTIC_TEST)
+
+
+def run_tilted(suite, mg, st, bin_id, bin_index, bin_count):
     trial_num = state.next_trial_number(st)
     path = logger.log_path(trial_num, True)
     log = logger.CSVLogger(path)
@@ -109,6 +121,7 @@ def run_tilted(suite, mg, st, bin_id, bin_index):
         "log",
         path,
     )
+    print("Initial BIN ID", bin_id, "current repetition count", bin_count)
     heat_to_target(mg, suite.thermo_real, config.TARGET_TEMP_C)
     mg.set_angle_deg(angle)
     mg.pump_on()
@@ -140,10 +153,18 @@ def run_tilted(suite, mg, st, bin_id, bin_index):
         )
         remaining = int(config.TRIAL_MAX_SECONDS - (time.time() - start))
         print(
-            "Tilted tick snow",
+            "Tilted tick ts",
+            ts,
+            "snow",
             snow,
+            "raw distances",
+            distances,
             "temps",
             temps,
+            "ambient",
+            amb,
+            "wind",
+            wind,
             "flows",
             flows,
             "pav_avg",
@@ -166,7 +187,7 @@ def run_tilted(suite, mg, st, bin_id, bin_index):
     wait_for_rest(config.TRIAL_REST_SECONDS)
 
 
-def run_non_tilted(suite, mg, st, bin_id, bin_index):
+def run_non_tilted(suite, mg, st, bin_id, bin_index, bin_count):
     trial_num = state.next_trial_number(st)
     path = logger.log_path(trial_num, False)
     log = logger.CSVLogger(path)
@@ -184,6 +205,7 @@ def run_non_tilted(suite, mg, st, bin_id, bin_index):
         "log",
         path,
     )
+    print("Initial BIN ID", bin_id, "current repetition count", bin_count)
     heat_to_target(mg, suite.thermo_real, target)
     mg.set_angle_deg(0)
     mg.pump_on()
@@ -216,12 +238,20 @@ def run_non_tilted(suite, mg, st, bin_id, bin_index):
         )
         remaining = int(config.TRIAL_MAX_SECONDS - (time.time() - start))
         print(
-            "Non-tilted tick snow",
+            "Non-tilted tick ts",
+            ts,
+            "snow",
             snow,
+            "raw distances",
+            distances,
             "pav_avg",
             pav_avg,
             "temps",
             temps,
+            "ambient",
+            amb,
+            "wind",
+            wind,
             "flows",
             flows,
             "remaining",
@@ -302,6 +332,8 @@ def main_loop():
     suite = sensors.SensorSuite()
     mg = MegaController()
 
+    print_sensor_sources(suite)
+
     if config.DIAGNOSTIC_TEST:
         diagnostic_test(suite, mg, st)
         return
@@ -322,6 +354,8 @@ def main_loop():
             bin_id,
             "snow depth",
             snow,
+            "raw distances",
+            distances,
             "ambient",
             amb,
             "wind",
@@ -333,12 +367,12 @@ def main_loop():
             bin_index = state.bump_bin_count(st, bin_id, 4)
             print("Tilted path selected; using bin index", bin_index)
             print("Updated bin count now", state.get_bin_count(st, bin_id))
-            run_tilted(suite, mg, st, bin_id, bin_index)
+            run_tilted(suite, mg, st, bin_id, bin_index, state.get_bin_count(st, bin_id))
         else:
             bin_index = state.bump_bin_count(st, bin_id, 6)
             print("Non-tilted path selected; using bin index", bin_index)
             print("Updated bin count now", state.get_bin_count(st, bin_id))
-            run_non_tilted(suite, mg, st, bin_id, bin_index)
+            run_non_tilted(suite, mg, st, bin_id, bin_index, state.get_bin_count(st, bin_id))
 
         if config.RUN_ONCE:
             print("RUN_ONCE set, exiting after single trial")

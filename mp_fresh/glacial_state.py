@@ -53,12 +53,18 @@ def next_trial_number(state):
 
 
 def get_bin_count(state, bin_id):
-    return state.get("bin_counts", {}).get(bin_id, 0)
+    current = state.get("bin_counts", {}).get(bin_id, 0)
+    if current < 0:
+        current = 0
+    return current
 
 
 def bump_bin_count(state, bin_id, reset_at):
     counts = state.get("bin_counts", {})
     current = counts.get(bin_id, 0)
+    # Clamp any previously persisted values that exceeded the reset threshold
+    if current > reset_at:
+        current = 0
     use_value = current
     current += 1
     if current > reset_at:
