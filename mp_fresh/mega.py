@@ -43,8 +43,12 @@ class MegaController:
         if delta == 0:
             return
         direction = self.act_up if delta > 0 else self.act_down
+        speed = config.ACTUATOR_UP_DEG_PER_SEC if delta > 0 else config.ACTUATOR_DOWN_DEG_PER_SEC
+        if speed <= 0:
+            speed = 1
+        move_time = abs(delta) / speed + config.ACTUATOR_MOVE_BUFFER_S
+        print("Changing angle from", self.angle_deg, "to", target_deg, "deg; moving for", move_time, "s")
         direction()
-        move_time = abs(delta) / config.DEGREE_PER_SECOND
         time.sleep(move_time)
         self.act_stop()
         self.angle_deg = target_deg

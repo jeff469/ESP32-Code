@@ -99,7 +99,7 @@ def print_sensor_sources(suite):
     print("  Fluid temp[0] REAL pin", config.DS18B20_PIN, "temp[1] STUB", config.STUB_FLUID_TEMP_C)
     print("  Ambient[0] REAL I2C1 SDA", config.I2C_SDA, "SCL", config.I2C_SCL, "others STUB")
     print("  Flow[0] REAL pin", config.FLOW_PIN, "others STUB")
-    print("  Wind STUB", config.STUB_WIND)
+    print("  Wind API station", config.WIND_STATION_CODE, "cache s", config.WIND_API_CACHE_SECONDS)
     print("  Pavement STUB count 10 value", config.STUB_PAVEMENT_TEMP_C)
     print("RUN_ONCE", config.RUN_ONCE, "SMOKE_TEST", config.SMOKE_TEST, "DIAGNOSTIC_TEST", config.DIAGNOSTIC_TEST)
 

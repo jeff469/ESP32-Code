@@ -1,6 +1,19 @@
 import machine
+import network
 import time
-import os
+
+try:
+    import usocket as socket
+except Exception:
+    import socket
+
+try:
+    import ssl
+except Exception:
+    try:
+        import ussl as ssl
+    except Exception:
+        ssl = None
 
 try:
     import onewire
@@ -15,6 +28,86 @@ except Exception:
     import json
 
 import config
+
+
+def _wifi_connect(ssid, password, timeout_s=15):
+    wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    if wlan.isconnected():
+        return True
+    print("WiFi: connecting to", ssid)
+    wlan.connect(ssid, password)
+    start = time.ticks_ms()
+    while not wlan.isconnected():
+        if time.ticks_diff(time.ticks_ms(), start) > timeout_s * 1000:
+            print("WiFi connect timeout; keeping last wind reading")
+            return False
+        time.sleep(0.25)
+    print("WiFi: connected", wlan.ifconfig())
+    return True
+
+
+def _parse_url(url):
+    scheme = "https" if url.startswith("https://") else "http"
+    rest = url.split("://", 1)[1]
+    if "/" in rest:
+        hostport, path = rest.split("/", 1)
+        path = "/" + path
+    else:
+        hostport, path = rest, "/"
+    if ":" in hostport:
+        host, port_s = hostport.split(":", 1)
+        port = int(port_s)
+    else:
+        host = hostport
+        port = 443 if scheme == "https" else 80
+    return scheme, host, port, path
+
+
+def _http_get(url, timeout_s=15):
+    scheme, host, port, path = _parse_url(url)
+    addr = socket.getaddrinfo(host, port)[0][-1]
+    s = socket.socket()
+    s.settimeout(timeout_s)
+    s.connect(addr)
+    if scheme == "https":
+        if ssl is None:
+            s.close()
+            raise RuntimeError("HTTPS requested but no SSL support")
+        try:
+            s = ssl.wrap_socket(s, server_hostname=host)
+        except TypeError:
+            s = ssl.wrap_socket(s)
+    req = (
+        "GET "
+        + path
+        + " HTTP/1.1\r\nHost: "
+        + host
+        + "\r\nUser-Agent: esp32-mp\r\nAccept: application/json\r\nConnection: close\r\n\r\n"
+    )
+    s.send(req.encode("utf-8"))
+    chunks = []
+    while True:
+        try:
+            data = s.recv(512)
+        except Exception:
+            data = None
+        if not data:
+            break
+        chunks.append(data)
+    s.close()
+    raw = b"".join(chunks)
+    sep = raw.find(b"\r\n\r\n")
+    if sep == -1:
+        return raw
+    return raw[sep + 4 :]
+
+
+def _safe_float(val):
+    try:
+        return float(val)
+    except Exception:
+        return None
 
 
 class UltrasonicSensor:
@@ -192,6 +285,52 @@ class WindSensorStub:
         return self.values
 
 
+class WindFromApi:
+    def __init__(self):
+        self.last = config.STUB_WIND
+        self.last_fetch = 0
+
+    def _fetch(self):
+        if not _wifi_connect(config.WIFI_SSID, config.WIFI_PASS):
+            return self.last
+
+        last_error = None
+        for url in config.WIND_API_URLS:
+            try:
+                body = _http_get(url)
+                data = json.loads(body)
+                feats = data.get("features", [])
+                if not feats:
+                    last_error = "no features"
+                    continue
+                props = feats[0].get("properties", {})
+                speed = _safe_float(props.get("avg_wnd_spd_10m_pst2mts"))
+                direction = _safe_float(props.get("avg_wnd_dir_10m_pst2mts"))
+                if speed is None or direction is None:
+                    last_error = "missing speed/dir"
+                    continue
+                speed_ms = speed / 3.6
+                self.last = (speed_ms, direction)
+                self.last_fetch = time.time()
+                print("Wind API updated", self.last, "from", url)
+                return self.last
+            except Exception as exc:
+                last_error = exc
+
+        print("Wind API fallback; keeping last wind", last_error)
+        return self.last
+
+    def read(self):
+        now = time.time()
+        if self.last_fetch and (now - self.last_fetch) < config.WIND_API_CACHE_SECONDS:
+            return self.last
+        try:
+            return self._fetch()
+        except Exception as exc:
+            print("Wind API error; keeping last wind", exc)
+            return self.last
+
+
 class PavementArrayStub:
     def __init__(self, count=10, value=config.STUB_PAVEMENT_TEMP_C):
         self.count = count
@@ -211,7 +350,7 @@ class SensorSuite:
         self.flow_stubs = [StubFlowSensor() for _ in range(3)]
         self.thermo_real = FluidThermometer(config.DS18B20_PIN)
         self.thermo_stub = StubFluidThermometer()
-        self.wind_stub = WindSensorStub()
+        self.wind_api = WindFromApi()
         self.pavement_stub = PavementArrayStub()
 
     def read_ultrasonics(self):
@@ -233,7 +372,7 @@ class SensorSuite:
         return [self.thermo_real.read_temp_c(), self.thermo_stub.read_temp_c()]
 
     def read_wind(self):
-        return self.wind_stub.read()
+        return self.wind_api.read()
 
     def read_pavement(self):
         return self.pavement_stub.read_all()

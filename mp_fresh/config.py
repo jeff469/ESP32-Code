@@ -65,8 +65,12 @@ BIN_MAX_WIND_DIR = 2
 STATE_PATH = "state/bin_counts.json"
 LOG_DIR = "logs"
 
-# Actuator motion estimate
-DEGREE_PER_SECOND = 5
+# Actuator motion estimate (deg/s). Keep directional values so timing can
+# reflect any asymmetry in the actuator.
+ACTUATOR_UP_DEG_PER_SEC = 5
+ACTUATOR_DOWN_DEG_PER_SEC = 5
+# Extra buffer seconds to account for start/stop lag when changing angles.
+ACTUATOR_MOVE_BUFFER_S = 0.25
 
 # Stub values
 STUB_ULTRASONIC_CM = 100.0
@@ -75,3 +79,32 @@ STUB_AMBIENT = (2.0, 60.0)
 STUB_FLOW_PULSES_PER_WINDOW = 0
 STUB_WIND = (1.0, 90)
 STUB_PAVEMENT_TEMP_C = 0.2
+
+# Wi-Fi + weather API (GeoMet SWOB) settings for wind sourcing
+WIFI_SSID = "Google Home"
+WIFI_PASS = "tickleaimee"
+WIND_STATION_CODE = "COGI"
+
+# Build several URL variants because some stations respond only to specific
+# casing or parameter order. The sensor class iterates these until one
+# succeeds.
+_WIND_BASE = "https://api.weather.gc.ca/collections/swob-realtime/items?lang=en&f=json&limit=1"
+_WIND_PROPS = (
+    "date_tm-value,stn_nam,air_temp,rel_hum,"
+    "avg_wnd_spd_10m_pst2mts,avg_wnd_dir_10m_pst2mts"
+)
+WIND_API_URLS = []
+for _code in (WIND_STATION_CODE, WIND_STATION_CODE.lower(), WIND_STATION_CODE.upper()):
+    WIND_API_URLS.append(_WIND_BASE + "&url=" + _code)
+for _code in (WIND_STATION_CODE, WIND_STATION_CODE.lower(), WIND_STATION_CODE.upper()):
+    WIND_API_URLS.append(_WIND_BASE + "&url=" + _code + "&sortby=-date_tm-value")
+for _code in (WIND_STATION_CODE, WIND_STATION_CODE.lower(), WIND_STATION_CODE.upper()):
+    WIND_API_URLS.append(
+        _WIND_BASE
+        + "&url="
+        + _code
+        + "&sortby=-date_tm-value&properties="
+        + _WIND_PROPS
+    )
+
+WIND_API_CACHE_SECONDS = 300

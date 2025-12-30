@@ -8,11 +8,13 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 - Ambient SHT3x: I2C(1) SDA=21, SCL=22 @ 0x44.
 - Flow sensor: GPIO5 falling-edge IRQ, 2 ms debounce, 1.5 s window (pulses/min estimate).
 - Fluid thermometer: DS18B20 on GPIO4 (750 ms conversion).
-- Stubs: 3 ultrasonics, 1 extra fluid thermometer, 2 ambient sensors, 3 flow sensors, wind speed/direction, 10 pavement temps.
+- Wind: fetched from ECCC GeoMet SWOB API for station code in `config.WIND_STATION_CODE` (default `COGI`). Multiple URL variants
+  are tried automatically to handle picky station filters.
+- Stubs: 3 ultrasonics, 1 extra fluid thermometer, 2 ambient sensors, 3 flow sensors, 10 pavement temps.
 
 ## Operation
 1. Snow depth = `PRESET_CLEAR_DISTANCE_CM - avg(4 ultrasonics)`. If ≥ 5 cm → tilted test else non-tilted.
-2. Bin ID `(tbin,hbin,sbin,dbin)` from ambient temp/humidity, wind speed/direction with widths (4 °C, 3 %, 3 m/s, 3 dir sectors), clamped to max indices temp/humidity/speed=3 and direction=2.
+2. Bin ID `(tbin,hbin,sbin,dbin)` from ambient temp/humidity and wind speed/direction pulled from the GeoMet API, with widths (4 °C, 3 %, 3 m/s, 3 dir sectors), clamped to max indices temp/humidity/speed=3 and direction=2. Wind speeds from GeoMet are converted from km/h to m/s for binning.
 3. Bin counts persist in `state/bin_counts.json`.
 
 ### Tilted test
@@ -20,6 +22,9 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 - Heat fluid to 36 °C, move actuator to angle, pump ON.
 - Log every 10 s to `/logs/YYYYMMDD_HHMMSS_trialNN_tilted.csv`.
 - Stop when snow depth ≤1 cm or 15 min elapsed. Then slope 5°, pump/heater OFF, rest ~1 min.
+
+Actuator timing is estimated from `ACTUATOR_UP_DEG_PER_SEC`/`ACTUATOR_DOWN_DEG_PER_SEC` with a small start/stop buffer
+(`ACTUATOR_MOVE_BUFFER_S`) so angle changes better match the real linear actuator speed.
 
 ### Non-tilted test
 - Bin count→target temp: [36, 36×1.05, 36×1.10, 36×1.15, 36×0.95, 36×0.90, 36×0.85] then reset.
@@ -29,6 +34,10 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 ## Testing modes
 - Set `SMOKE_TEST=True` in `config.py` to read each real sensor once and send Mega commands `H→h`, `P→p`, `U→S→D→S`. All actions print to serial.
 - Set `DIAGNOSTIC_TEST=True` to gather multiple sensor samples (count/delay configured in `DIAG_SAMPLE_COUNT`/`DIAG_SAMPLE_DELAY_S`), print the active bin ID per sample, and run the smoke test sequence.
+
+Wi-Fi/API: fill in `Google Home`/`tickleaimee` in `config.py` so wind speed/direction can be fetched for binning. The wind reader
+tries several URL variants (different casing and parameter orders) until one returns data, then caches the result for 5 minutes
+(`WIND_API_CACHE_SECONDS`) to avoid hammering the GeoMet API.
 
 ## Files
 - `config.py` constants and pin map.
@@ -41,6 +50,16 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 
 Heating guard: `HEAT_TIMEOUT_SECONDS` (in `config.py`) stops the heater wait if the target temperature is never reached
 to keep raw REPL access usable during hardware testing.
+
+## GeoMet weather fetch (Guelph Turfgrass Institute)
+`weather_swob.py` is a standalone MicroPython script that connects to Wi-Fi and fetches the latest SWOB observation for
+station `COGI` (Guelph Turfgrass Institute) from the ECCC GeoMet API. Fill in `WIFI_SSID`/`WIFI_PASS`, optionally set
+`RUN_ONCE=True` for a single fetch, then run:
+
+```bash
+mpremote connect COM4 fs cp mp_fresh/weather_swob.py :weather_swob.py
+mpremote connect COM4 exec "exec(open('weather_swob.py').read())"
+```
 
 ## Update & run on ESP32
 Adjust the serial port as needed (example uses `COM4`).
