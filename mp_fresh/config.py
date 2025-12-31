@@ -10,7 +10,7 @@ DIAG_SAMPLE_DELAY_S = 1
 # Pin assignments
 # Shared ultrasonic trigger with four echo pins
 ULTRASONIC_TRIG = 18
-ULTRASONIC_ECHOS = [19, 23, 25, 26]
+ULTRASONIC_ECHOS = [19, 13, 12, 14]
 
 FLOW_PIN = 5
 DS18B20_PIN = 4
@@ -97,7 +97,7 @@ STUB_PAVEMENT_TEMP_C = 0.2
 
 # Wi-Fi + weather API (GeoMet SWOB) settings for wind sourcing
 WIFI_SSID = "Google Home"
-WIFI_PASS = "YOUR_WIFI_PASSWORD"
+WIFI_PASS = "tickleaimee"
 WIND_STATION_CODE = "COGI"
 
 # Build several URL variants because some stations respond only to specific

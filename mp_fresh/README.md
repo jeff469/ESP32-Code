@@ -4,7 +4,7 @@ Minimal MicroPython control loop for ESP32 with Arduino Mega over UART2. Designe
 
 ## Hardware map
 - UART2 (TX=17, RX=16) @ 9600 baud to Arduino Mega for pump/heater/actuator commands.
-- Ultrasonics (real, shared TRIG=18): ECHOs=[19, 23, 25, 26] using `machine.time_pulse_us`.
+- Ultrasonics (real, shared TRIG=18): ECHOs=[19, 13, 12, 14] using `machine.time_pulse_us`.
 - Ambient SHT3x: I2C(1) SDA=21, SCL=22 @ 0x44.
 - Flow sensor: GPIO5 falling-edge IRQ, 2 ms debounce, 1.5 s window (pulses/min estimate).
 - Fluid thermometer: DS18B20 on GPIO4 (750 ms conversion).
@@ -35,9 +35,9 @@ Actuator timing is estimated from `ACTUATOR_UP_DEG_PER_SEC`/`ACTUATOR_DOWN_DEG_P
 - Set `SMOKE_TEST=True` in `config.py` to read each real sensor once and send Mega commands `H→h`, `P→p`, `U→S→D→S`. All actions print to serial.
 - Set `DIAGNOSTIC_TEST=True` to gather multiple sensor samples (count/delay configured in `DIAG_SAMPLE_COUNT`/`DIAG_SAMPLE_DELAY_S`), print the active bin ID per sample, and run the smoke test sequence.
 
-Wi-Fi/API: fill in `WIFI_SSID`/`WIFI_PASS` in `config.py` so wind speed/direction can be fetched for binning. The wind reader
-tries several URL variants (different casing and parameter orders) until one returns data, then caches the result for 5 minutes
-(`WIND_API_CACHE_SECONDS`) to avoid hammering the GeoMet API.
+Wi-Fi/API: fill in `WIFI_SSID`/`WIFI_PASS` in `config.py` (defaults set to the provided “Google Home” test network) so wind
+speed/direction can be fetched for binning. The wind reader tries several URL variants (different casing and parameter orders)
+until one returns data, then caches the result for 5 minutes (`WIND_API_CACHE_SECONDS`) to avoid hammering the GeoMet API.
 
 ## Files
 - `config.py` constants and pin map.
