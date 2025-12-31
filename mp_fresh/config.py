@@ -96,8 +96,8 @@ STUB_WIND = (1.0, 90)
 STUB_PAVEMENT_TEMP_C = 0.2
 
 # Wi-Fi + weather API (GeoMet SWOB) settings for wind sourcing
-WIFI_SSID = "YOUR_WIFI_NAME"
-WIFI_PASS = "YOUR_WIFI_PASSWORD"
+WIFI_SSID = "Google Home"
+WIFI_PASS = "tickleaimee"
 WIND_STATION_CODE = "COGI"
 
 # Build several URL variants because some stations respond only to specific

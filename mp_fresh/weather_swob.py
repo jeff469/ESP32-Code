@@ -19,8 +19,8 @@ except ImportError:
         ssl = None
 
 # Wi-Fi credentials (fill these in before running)
-WIFI_SSID = "YOUR_WIFI_NAME"
-WIFI_PASS = "YOUR_WIFI_PASSWORD"
+WIFI_SSID = "Google Home"
+WIFI_PASS = "tickleaimee"
 
 # Try multiple southern Ontario stations (first success wins)
 STATION_CODES = ["COGI", "CYHM", "CYXU"]
