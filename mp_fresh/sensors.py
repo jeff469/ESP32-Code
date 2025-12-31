@@ -43,7 +43,11 @@ def _wifi_connect(ssid, password, timeout_s=15):
     if wlan.isconnected():
         return True
     print("WiFi: connecting to", ssid)
-    wlan.connect(ssid, password)
+    try:
+        wlan.connect(ssid, password)
+    except Exception as exc:
+        print("WiFi connect failed; keeping last wind", exc)
+        return False
     start = time.ticks_ms()
     while not wlan.isconnected():
         if time.ticks_diff(time.ticks_ms(), start) > timeout_s * 1000:
@@ -125,7 +129,8 @@ class UltrasonicSensor:
             self.trig = trig_pin
         else:
             self.trig = machine.Pin(trig_pin, machine.Pin.OUT)
-        self.echo = machine.Pin(echo_pin, machine.Pin.IN)
+        self.trig.off()
+        self.echo = machine.Pin(echo_pin, machine.Pin.IN, machine.Pin.PULL_DOWN)
         self.timeout_us = timeout_us
 
     def measure_distance_cm(self):
@@ -278,6 +283,9 @@ class WindFromApi:
         self.last_fetch = 0
 
     def _fetch(self):
+        if not config.WIFI_SSID or config.WIFI_SSID == "YOUR_WIFI_NAME":
+            print("Wind API skipped; WIFI_SSID not set")
+            return self.last
         if not _wifi_connect(config.WIFI_SSID, config.WIFI_PASS):
             return self.last
 
@@ -321,7 +329,7 @@ class WindFromApi:
 class SensorSuite:
     def __init__(self):
         trig_pin = machine.Pin(config.ULTRASONIC_TRIG, machine.Pin.OUT)
-        self.ultrasonics = [UltrasonicSensor(trig_pin, echo) for echo in config.ULTRASONIC_ECHOS]
+        self.ultrasonics = [UltrasonicSensor(trig_pin, echo, timeout_us=60000) for echo in config.ULTRASONIC_ECHOS]
         self.ambient_real = SHT3xSensor(config.I2C_SDA, config.I2C_SCL)
         self.flow_real = FlowSensor(config.FLOW_PIN)
         self.temp_manager = DS18B20Manager(
@@ -333,7 +341,11 @@ class SensorSuite:
         self.wind_api = WindFromApi()
 
     def read_ultrasonics(self):
-        return [sensor.measure_distance_cm() for sensor in self.ultrasonics]
+        distances = []
+        for sensor in self.ultrasonics:
+            distances.append(sensor.measure_distance_cm())
+            time.sleep_ms(50)
+        return distances
 
     def read_flows(self):
         return [self.flow_real.read_l_min()]
