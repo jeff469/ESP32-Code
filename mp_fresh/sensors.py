@@ -30,6 +30,13 @@ except Exception:
 import config
 
 
+def _hex_to_rom(hex_str):
+    try:
+        return bytes.fromhex(hex_str)
+    except Exception:
+        return None
+
+
 def _wifi_connect(ssid, password, timeout_s=15):
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
@@ -112,7 +119,12 @@ def _safe_float(val):
 
 class UltrasonicSensor:
     def __init__(self, trig_pin, echo_pin, timeout_us=30000):
-        self.trig = machine.Pin(trig_pin, machine.Pin.OUT)
+        # Allow passing a Pin object for the shared trigger so multiple sensors
+        # can reuse a single TRIG line.
+        if isinstance(trig_pin, machine.Pin):
+            self.trig = trig_pin
+        else:
+            self.trig = machine.Pin(trig_pin, machine.Pin.OUT)
         self.echo = machine.Pin(echo_pin, machine.Pin.IN)
         self.timeout_us = timeout_us
 
@@ -128,14 +140,6 @@ class UltrasonicSensor:
         # speed of sound 343 m/s -> 0.0343 cm/us; divide by 2 for round trip
         distance = (duration * 0.0343) / 2
         return distance
-
-
-class StubUltrasonicSensor:
-    def __init__(self, value_cm=config.STUB_ULTRASONIC_CM):
-        self.value_cm = value_cm
-
-    def measure_distance_cm(self):
-        return self.value_cm
 
 
 class SHT3xSensor:
@@ -170,14 +174,6 @@ class SHT3xSensor:
             return config.STUB_AMBIENT
 
 
-class StubAmbientSensor:
-    def __init__(self, values=config.STUB_AMBIENT):
-        self.values = values
-
-    def read(self):
-        return self.values
-
-
 class FlowSensor:
     def __init__(self, pin_no, window_ms=config.FLOW_WINDOW_MS, debounce_us=config.FLOW_DEBOUNCE_US):
         self.pin = machine.Pin(pin_no, machine.Pin.IN, machine.Pin.PULL_UP)
@@ -209,80 +205,71 @@ class FlowSensor:
         return flow_per_min
 
 
-class StubFlowSensor:
-    def __init__(self, pulses=config.STUB_FLOW_PULSES_PER_WINDOW):
-        self.pulses = pulses
-
-    def read_l_min(self):
-        return self.pulses
-
-
-class FluidThermometer:
-    def __init__(self, pin_no):
+class DS18B20Manager:
+    def __init__(self, pin_no, fluid_out_rom, fluid_return_rom, pavement_roms):
         self.dat = machine.Pin(pin_no)
-        self.last_good = None
-        self.rom = None
+        self.last_good = {}
+        self.fluid_out_rom = _hex_to_rom(fluid_out_rom)
+        self.fluid_return_rom = _hex_to_rom(fluid_return_rom)
+        self.pavement_roms = []
+        for rom_hex in pavement_roms:
+            rom = _hex_to_rom(rom_hex)
+            if rom is not None:
+                self.pavement_roms.append(rom)
         if onewire is not None and ds18x20 is not None:
-            self.ow = onewire.OneWire(self.dat)
-            self.ds = ds18x20.DS18X20(self.ow)
-            roms = self.ds.scan()
-            if roms:
-                self.rom = roms[0]
-            else:
-                print("DS18B20 scan found no devices; using stub until available")
+            try:
+                self.ow = onewire.OneWire(self.dat)
+                self.ds = ds18x20.DS18X20(self.ow)
+            except Exception as exc:
+                print("DS18B20 bus init failed", exc)
+                self.ow = None
+                self.ds = None
         else:
             self.ow = None
             self.ds = None
 
-    def _ensure_rom(self):
+    def _convert(self):
         if self.ds is None:
             return False
-        if self.rom is not None:
-            return True
         try:
-            roms = self.ds.scan()
-            if roms:
-                self.rom = roms[0]
-                print("DS18B20 discovered after rescan")
-                return True
+            self.ds.convert_temp()
+            time.sleep_ms(750)
+            return True
         except Exception as exc:
-            print("DS18B20 rescan failed; using stub:", exc)
-        return False
+            print("DS18B20 convert failed", exc)
+            return False
 
-    def read_temp_c(self):
-        if not self._ensure_rom():
-            return config.STUB_FLUID_TEMP_C
-        for attempt in range(2):
-            try:
-                self.ds.convert_temp()
-                time.sleep_ms(750)
-                temp = self.ds.read_temp(self.rom)
-                if temp is not None:
-                    self.last_good = temp
-                    return temp
-            except Exception as exc:
-                print("DS18B20 read attempt", attempt + 1, "failed;", exc)
-        if self.last_good is not None:
-            print("Using last good DS18B20 reading", self.last_good)
-            return self.last_good
-        print("DS18B20 unavailable; using stub temp")
-        return config.STUB_FLUID_TEMP_C
+    def _read_one(self, name, rom):
+        if self.ds is None or rom is None:
+            return self.last_good.get(name)
+        try:
+            temp = self.ds.read_temp(rom)
+        except Exception as exc:
+            print("DS18B20 read failed for", name, exc)
+            temp = None
+        if temp is None:
+            return self.last_good.get(name)
+        self.last_good[name] = temp
+        return temp
 
+    def read_all(self):
+        self._convert()
+        pavements = []
+        fluid_out = self._read_one("fluid_out", self.fluid_out_rom)
+        fluid_return = self._read_one("fluid_return", self.fluid_return_rom)
+        idx = 1
+        for rom in self.pavement_roms:
+            name = "pavement_%d" % idx
+            pavements.append(self._read_one(name, rom))
+            idx += 1
+        return {
+            "fluid_out": fluid_out,
+            "fluid_return": fluid_return,
+            "pavements": pavements,
+        }
 
-class StubFluidThermometer:
-    def __init__(self, value=config.STUB_FLUID_TEMP_C):
-        self.value = value
-
-    def read_temp_c(self):
-        return self.value
-
-
-class WindSensorStub:
-    def __init__(self, values=config.STUB_WIND):
-        self.values = values
-
-    def read(self):
-        return self.values
+    def read_pavements(self):
+        return self.read_all().get("pavements", [])
 
 
 class WindFromApi:
@@ -331,48 +318,37 @@ class WindFromApi:
             return self.last
 
 
-class PavementArrayStub:
-    def __init__(self, count=10, value=config.STUB_PAVEMENT_TEMP_C):
-        self.count = count
-        self.value = value
-
-    def read_all(self):
-        return [self.value for _ in range(self.count)]
-
-
 class SensorSuite:
     def __init__(self):
-        self.ultrasonic_real = UltrasonicSensor(config.ULTRASONIC_PINS["trig"], config.ULTRASONIC_PINS["echo"])
-        self.ultrasonic_stubs = [StubUltrasonicSensor() for _ in range(3)]
+        trig_pin = machine.Pin(config.ULTRASONIC_TRIG, machine.Pin.OUT)
+        self.ultrasonics = [UltrasonicSensor(trig_pin, echo) for echo in config.ULTRASONIC_ECHOS]
         self.ambient_real = SHT3xSensor(config.I2C_SDA, config.I2C_SCL)
-        self.ambient_stubs = [StubAmbientSensor() for _ in range(2)]
         self.flow_real = FlowSensor(config.FLOW_PIN)
-        self.flow_stubs = [StubFlowSensor() for _ in range(3)]
-        self.thermo_real = FluidThermometer(config.DS18B20_PIN)
-        self.thermo_stub = StubFluidThermometer()
+        self.temp_manager = DS18B20Manager(
+            config.DS18B20_PIN,
+            config.DS18B20_FLUID_OUT_ROM,
+            config.DS18B20_FLUID_RETURN_ROM,
+            config.DS18B20_PAVEMENT_ROMS,
+        )
         self.wind_api = WindFromApi()
-        self.pavement_stub = PavementArrayStub()
 
     def read_ultrasonics(self):
-        values = [self.ultrasonic_real.measure_distance_cm()]
-        values.extend([s.measure_distance_cm() for s in self.ultrasonic_stubs])
-        return values
-
-    def read_ambient_all(self):
-        readings = [self.ambient_real.read()]
-        readings.extend([s.read() for s in self.ambient_stubs])
-        return readings
+        return [sensor.measure_distance_cm() for sensor in self.ultrasonics]
 
     def read_flows(self):
-        readings = [self.flow_real.read_l_min()]
-        readings.extend([s.read_l_min() for s in self.flow_stubs])
-        return readings
+        return [self.flow_real.read_l_min()]
 
     def read_temps(self):
-        return [self.thermo_real.read_temp_c(), self.thermo_stub.read_temp_c()]
+        return self.temp_manager.read_all()
+
+    def read_fluid_out(self):
+        return self.temp_manager.read_all().get("fluid_out")
+
+    def read_fluid_return(self):
+        return self.temp_manager.read_all().get("fluid_return")
 
     def read_wind(self):
         return self.wind_api.read()
 
     def read_pavement(self):
-        return self.pavement_stub.read_all()
+        return self.temp_manager.read_pavements()

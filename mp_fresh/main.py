@@ -67,12 +67,12 @@ def wait_for_rest(seconds):
         time.sleep(1)
 
 
-def heat_to_target(mg, thermo, target):
+def heat_to_target(mg, temp_reader, target):
     start = time.time()
     mg.heater_on()
     print("Heating to target", target)
     while True:
-        t_now = thermo.read_temp_c()
+        t_now = temp_reader()
         elapsed = time.time() - start
         print("Heating status temp", t_now, "elapsed", int(elapsed), "s")
         if t_now >= target:
@@ -94,13 +94,23 @@ def heat_to_target(mg, thermo, target):
 
 def print_sensor_sources(suite):
     print("Sensor sources:")
-    print("  Ultrasonic[0] REAL trig", config.ULTRASONIC_PINS["trig"], "echo", config.ULTRASONIC_PINS["echo"])
-    print("  Ultrasonic[1-3] STUB values", config.STUB_ULTRASONIC_CM)
-    print("  Fluid temp[0] REAL pin", config.DS18B20_PIN, "temp[1] STUB", config.STUB_FLUID_TEMP_C)
-    print("  Ambient[0] REAL I2C1 SDA", config.I2C_SDA, "SCL", config.I2C_SCL, "others STUB")
-    print("  Flow[0] REAL pin", config.FLOW_PIN, "others STUB")
+    print(
+        "  Ultrasonics REAL shared trig",
+        config.ULTRASONIC_TRIG,
+        "echos",
+        config.ULTRASONIC_ECHOS,
+    )
+    print("  Fluid temps REAL DS18B20 on pin", config.DS18B20_PIN)
+    print(
+        "    fluid_out",
+        config.DS18B20_FLUID_OUT_ROM,
+        "fluid_return",
+        config.DS18B20_FLUID_RETURN_ROM,
+    )
+    print("    pavement ROMs", config.DS18B20_PAVEMENT_ROMS)
+    print("  Ambient REAL SHT3x I2C1 SDA", config.I2C_SDA, "SCL", config.I2C_SCL)
+    print("  Flow[0] REAL pin", config.FLOW_PIN)
     print("  Wind API station", config.WIND_STATION_CODE, "cache s", config.WIND_API_CACHE_SECONDS)
-    print("  Pavement STUB count 10 value", config.STUB_PAVEMENT_TEMP_C)
     print("RUN_ONCE", config.RUN_ONCE, "SMOKE_TEST", config.SMOKE_TEST, "DIAGNOSTIC_TEST", config.DIAGNOSTIC_TEST)
 
 
@@ -122,7 +132,7 @@ def run_tilted(suite, mg, st, bin_id, bin_index, bin_count):
         path,
     )
     print("Initial BIN ID", bin_id, "current repetition count", bin_count)
-    heat_to_target(mg, suite.thermo_real, config.TARGET_TEMP_C)
+    heat_to_target(mg, suite.read_fluid_out, config.TARGET_TEMP_C)
     mg.set_angle_deg(angle)
     mg.pump_on()
     start = time.time()
@@ -131,10 +141,10 @@ def run_tilted(suite, mg, st, bin_id, bin_index, bin_count):
         distances = suite.read_ultrasonics()
         snow = snow_depth_cm(distances)
         temps = suite.read_temps()
+        pav = temps.get("pavements", [])
         amb = suite.ambient_real.read()
         wind = suite.read_wind()
         flows = suite.read_flows()
-        pav = suite.read_pavement()
         ts = logger.timestamp()
         log.log(
             {
@@ -206,7 +216,7 @@ def run_non_tilted(suite, mg, st, bin_id, bin_index, bin_count):
         path,
     )
     print("Initial BIN ID", bin_id, "current repetition count", bin_count)
-    heat_to_target(mg, suite.thermo_real, target)
+    heat_to_target(mg, suite.read_fluid_out, target)
     mg.set_angle_deg(0)
     mg.pump_on()
     start = time.time()
@@ -218,7 +228,7 @@ def run_non_tilted(suite, mg, st, bin_id, bin_index, bin_count):
         amb = suite.ambient_real.read()
         wind = suite.read_wind()
         flows = suite.read_flows()
-        pav = suite.read_pavement()
+        pav = temps.get("pavements", [])
         pav_avg = avg(pav)
         ts = logger.timestamp()
         log.log(
@@ -277,7 +287,7 @@ def smoke_test(suite, mg):
     print("Ambient real:", suite.ambient_real.read())
     print("Ultrasonic real:", suite.ultrasonic_real.measure_distance_cm())
     print("Flow real:", suite.flow_real.read_l_min())
-    print("Fluid temp real:", suite.thermo_real.read_temp_c())
+    print("Fluid temps:", suite.read_temps())
     mg.heater_on()
     mg.heater_off()
     mg.pump_on()

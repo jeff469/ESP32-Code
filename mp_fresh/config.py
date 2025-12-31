@@ -8,16 +8,31 @@ DIAG_SAMPLE_COUNT = 3
 DIAG_SAMPLE_DELAY_S = 1
 
 # Pin assignments
-ULTRASONIC_PINS = {
-    "trig": 18,
-    "echo": 19,
-}
+# Shared ultrasonic trigger with four echo pins
+ULTRASONIC_TRIG = 18
+ULTRASONIC_ECHOS = [19, 23, 25, 26]
 
 FLOW_PIN = 5
 DS18B20_PIN = 4
 I2C_SDA = 21
 I2C_SCL = 22
 SHT3X_ADDR = 0x44
+
+# DS18B20 ROM addresses (hex). Two fluid probes followed by ten pavement probes.
+DS18B20_FLUID_OUT_ROM = "288FBC7B432506B4"
+DS18B20_FLUID_RETURN_ROM = "28670BF04325066F"
+DS18B20_PAVEMENT_ROMS = [
+    "283B08BC43250680",
+    "2815D8F74325060F",
+    "28A53255432506C1",
+    "285EF34143250692",
+    "28CE7E1F432506C9",
+    "284E48294325067A",
+    "284A75BB0000001E",
+    "2872485900000074",
+    "28CCAFC6432506A6",
+    "28845905432506F9",
+]
 
 UART2_TX = 17
 UART2_RX = 16
@@ -82,7 +97,7 @@ STUB_PAVEMENT_TEMP_C = 0.2
 
 # Wi-Fi + weather API (GeoMet SWOB) settings for wind sourcing
 WIFI_SSID = "Google Home"
-WIFI_PASS = "tickleaimee"
+WIFI_PASS = "YOUR_WIFI_PASSWORD"
 WIND_STATION_CODE = "COGI"
 
 # Build several URL variants because some stations respond only to specific
